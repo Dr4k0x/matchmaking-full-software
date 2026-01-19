@@ -237,8 +237,6 @@ const TechnologiesPage: React.FC = () => {
                 isSelectionMode={selectionMode}
                 selectedIds={selectedIds}
                 onToggleSelect={handleToggleSelect}
-                onEdit={handleEdit}
-                onDelete={handleRequestDelete}
             />
 
             {/* Selection Toolbar Overlay */}

@@ -13,7 +13,6 @@ const EmployeesPage: React.FC = () => {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [formInstanceKey, setFormInstanceKey] = useState(0);
     const [isCreating, setIsCreating] = useState(false);
-    const [isClosing, setIsClosing] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -63,6 +62,21 @@ const EmployeesPage: React.FC = () => {
         restore();
     }, [employees, location.state, navigate, location.pathname]);
 
+    // ESC Key Listener for Modal
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+
+        if (selectedId !== null || isCreating) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedId, isCreating]);
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -81,32 +95,17 @@ const EmployeesPage: React.FC = () => {
 
     const clearFormDrafts = () => {
         sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
-        // Clear selection storage for both modes to be safe
         const currentId = selectedId ?? 'new';
         sessionStorage.removeItem(`techSelection:${currentId}:create`);
         sessionStorage.removeItem(`techSelection:${currentId}:edit`);
-        // If we were editing, also clear the 'new' potential draft
         if (selectedId) sessionStorage.removeItem(`techSelection:new:create`);
-    };
-
-    const handleCloseFluid = (callback?: () => void) => {
-        setIsClosing(true);
-        setTimeout(() => {
-            setSelectedId(null);
-            setIsCreating(false);
-            setIsClosing(false);
-            setFormInstanceKey(k => k + 1);
-            if (callback) callback();
-        }, 300);
     };
 
     const handleSelect = (emp: Employee) => {
         const returnedFromPicker = (location.state as any)?.restoredFromSelection === true;
-        
         if (!returnedFromPicker) {
             sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
         }
-        
         setSelectedId(emp.idCarta);
         setIsCreating(false);
         setFormInstanceKey(k => k + 1);
@@ -114,11 +113,9 @@ const EmployeesPage: React.FC = () => {
 
     const handleAdd = () => {
         const returnedFromPicker = (location.state as any)?.restoredFromSelection === true;
-
         if (!returnedFromPicker) {
             sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
         }
-
         setSelectedId(null);
         setIsCreating(true);
         setFormInstanceKey(k => k + 1);
@@ -128,7 +125,9 @@ const EmployeesPage: React.FC = () => {
 
     const handleCancel = () => {
         clearFormDrafts();
-        handleCloseFluid();
+        setSelectedId(null);
+        setIsCreating(false);
+        setFormInstanceKey(k => k + 1);
     };
 
     const handleSave = async (data: Omit<Employee, 'idCarta'>) => {
@@ -140,9 +139,8 @@ const EmployeesPage: React.FC = () => {
                 await cartaService.create(data);
                 await loadData(); 
             }
-            
             clearFormDrafts();
-            handleCloseFluid();
+            handleCancel();
         } catch (err: any) {
             alert('Error al guardar empleado');
         }
@@ -153,21 +151,20 @@ const EmployeesPage: React.FC = () => {
         try {
             await cartaService.delete(selectedId);
             setEmployees(prev => prev.filter(e => e.idCarta !== selectedId));
-            handleCloseFluid(() => {
-            clearFormDrafts();
-        });
+            handleCancel();
         } catch (err: any) {
             alert('Error al eliminar empleado');
         }
     };
 
-    const isSplitView = selectedId !== null || isCreating;
+    const showModal = selectedId !== null || isCreating;
 
     if (loading && employees.length === 0) return <div className="loading">Cargando...</div>;
 
     return (
-        <div className={`employees-page ${isSplitView || isClosing ? 'split-view' : ''} ${isClosing ? 'closing' : ''}`}>
+        <div className="employees-page">
             {error && <div className="error-message">{error}</div>}
+            
             <EmployeeGrid
                 employees={employees}
                 onSelect={handleSelect}
@@ -176,14 +173,26 @@ const EmployeesPage: React.FC = () => {
                 onBack={handleBack}
             />
 
-            <EmployeeForm
-                key={`${selectedId ?? 'new'}-${formInstanceKey}`}
-                initialData={selectedEmp}
-                onSave={handleSave}
-                onCancel={handleCancel}
-                onDelete={handleDelete}
-                availableTechnologies={availableTechnologies}
-            />
+            {showModal && (
+                <div className="modal-overlay" onClick={handleCancel}>
+                    <div className="emp-form-modal" onClick={e => e.stopPropagation()}>
+                        <button className="emp-form-close" onClick={handleCancel} title="Cerrar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                        <EmployeeForm
+                            key={`${selectedId ?? 'new'}-${formInstanceKey}`}
+                            initialData={selectedEmp}
+                            onSave={handleSave}
+                            onCancel={handleCancel}
+                            onDelete={handleDelete}
+                            availableTechnologies={availableTechnologies}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

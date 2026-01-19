@@ -140,46 +140,6 @@
     color: white;
 }
 
-/* Actions Overlay (Edit/Delete) */
-.tech-actions-overlay {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    display: flex;
-    gap: 5px;
-    opacity: 0;
-    transition: opacity 0.2s;
-    z-index: 5;
-}
-
-.tech-item:hover .tech-actions-overlay {
-    opacity: 1;
-}
-
-.tech-action-icon {
-    width: 28px;
-    height: 28px;
-    background: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #2c3e50;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    transition: transform 0.2s;
-}
-
-.tech-action-icon:hover {
-    transform: scale(1.1);
-}
-
-.tech-action-icon.delete {
-    color: #e74c3c;
-}
-
-.tech-action-icon.edit {
-    color: #3498db;
-}
 
 /* Selection State Style */
 .tech-item.pre-selected {
@@ -274,10 +234,11 @@
 
 .tech-input-label {
     font-size: 0.8rem;
-    color: #666;
-    font-weight: 700;
+    color: #2c3e50;
+    font-weight: 800;
     text-transform: uppercase;
     margin-left: 5px;
+    opacity: 0.8;
 }
 
 .tech-input {
@@ -287,6 +248,8 @@
     border-radius: 8px;
     font-size: 1rem;
     background: white;
+    color: #2c3e50;
+    font-weight: 600;
 }
 
 .tech-input:focus {
