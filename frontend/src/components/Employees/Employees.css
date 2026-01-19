@@ -1,0 +1,586 @@
+
+/* --- Global / Page Layout --- */
+.employees-page {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #27ae60; /* Green background */
+    transition: all 0.5s ease;
+}
+
+.employees-page.split-view .emp-grid-container {
+    width: 40%; /* Shrink grid when form is open */
+    flex: none;
+}
+
+.employees-page.closing .emp-grid-container {
+    width: 100%;
+}
+
+/* --- GRID SECTION (Reconstructed) --- */
+.emp-grid-container {
+    flex: 1;
+    width: 100%;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: all 0.5s ease;
+    overflow-y: auto;
+}
+
+.emp-header {
+    width: 100%;
+    max-width: 1200px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+}
+
+.emp-title {
+    color: white;
+    font-size: 2.5rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin: 0;
+}
+
+.back-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.back-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.back-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.emp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+    width: 100%;
+    max-width: 1200px;
+    justify-items: center;
+    padding-bottom: 2rem;
+}
+
+/* Card Style */
+.emp-card {
+    width: 200px;
+    height: 300px;
+    background-color: #ecf0f1;
+    border: 8px solid #2c3e50;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    position: relative;
+    flex-shrink: 0;
+}
+
+.emp-card:hover {
+    transform: translateY(-10px) scale(1.05);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+    z-index: 10;
+}
+
+.emp-card.selected {
+    border-color: #f1c40f;
+    box-shadow: 0 0 20px #f1c40f;
+}
+
+.emp-card-header {
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.5rem;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.emp-card-image {
+    flex: 1;
+    background-color: #bdc3c7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #7f8c8d;
+}
+
+.emp-card-image svg {
+    width: 60%;
+    height: 60%;
+}
+
+.emp-card-footer {
+    background-color: #2c3e50;
+    color: #f1c40f;
+    padding: 0.5rem;
+    text-align: center;
+    font-weight: 800;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+/* Add Button Card */
+.add-btn {
+    border-color: rgba(255, 255, 255, 0.5);
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.5);
+    border-style: dashed;
+}
+
+.add-btn:hover {
+    border-color: white;
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.add-btn svg {
+    width: 50%;
+    height: 50%;
+}
+
+
+/* --- FORM SECTION (New Refactor) --- */
+
+.employees-page.split-view .emp-form-container {
+    width: 60%;
+    flex: none;
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.employees-page.closing .emp-form-container {
+    width: 0;
+    opacity: 0;
+    transform: translateX(40px);
+}
+
+/* Base state: Hidden and taking no space */
+.emp-form-container {
+    width: 0;
+    flex: none;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center; 
+    padding: 0;
+    overflow: hidden;
+    transition: all 0.5s ease;
+    background: rgba(0,0,0,0.1);
+    opacity: 0;
+}
+
+.employees-page.split-view .emp-form-container {
+    padding: 2rem;
+}
+
+/* Mobile Responsive */
+@media (max-width: 900px) {
+    .employees-page.split-view {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .employees-page.split-view .emp-grid-container {
+        width: 100%;
+        height: 50vh; /* Show half grid, half form or similar */
+        flex: none;
+    }
+
+    .employees-page.split-view .emp-form-container {
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+        flex: none;
+        padding: 1rem;
+    }
+}
+
+.emp-form-content {
+    background-color: white; 
+    border-radius: 20px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 1000px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: slideIn 0.5s ease;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* Layout Grid for Form */
+.emp-form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    width: 100%;
+}
+
+.emp-col-left, .emp-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Form Sections */
+.emp-section-title {
+    font-size: 1.1rem;
+    color: #7f8c8d;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 0.5rem;
+}
+
+/* Inputs */
+.emp-input-wrapper {
+    margin-bottom: 1rem;
+}
+
+.emp-label {
+    display: block;
+    font-size: 0.85rem;
+    color: #2c3e50;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.emp-input-clean {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #f5f6fa;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    outline: none;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.emp-input-clean:focus {
+    background-color: white;
+    border-color: #3498db;
+    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.1);
+}
+
+/* Stats */
+.stepper-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    padding: 0.8rem;
+    border-radius: 10px;
+}
+
+.stepper-label {
+    font-weight: 800;
+    color: #34495e;
+    font-size: 0.8rem;
+}
+
+.stepper-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    padding: 4px;
+    border-radius: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.stepper-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background-color: #ecf0f1;
+    color: #2c3e50;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stepper-btn:hover:not(:disabled) {
+    background-color: #3498db;
+    color: white;
+}
+
+.stepper-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.stepper-value {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: #2c3e50;
+    min-width: 25px;
+    text-align: center;
+}
+
+/* Preview Card (Right Col - Visual Only) */
+.emp-preview-card {
+    /* Mimic the real card but bigger or fit */
+    width: 100%;
+    max-width: 240px;
+    margin: 0 auto;
+    aspect-ratio: 2/3;
+    background-color: #ecf0f1;
+    border: 8px solid #2c3e50;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Reuse inner card classes since they are same structure in JSX? 
+   No, I used duplicate classes logic in my head. I should reuse .emp-card-header etc if possible.
+   The CSS above handles .emp-card-header globally so it should work inside .emp-preview-card too.
+*/
+
+/* Skills */
+.skills-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.skills-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.skill-icon-small {
+    width: 54px;
+    height: 54px;
+    background-color: #ecf0f1;
+    color: #2c3e50;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+    border: 3px solid white;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    position: relative;
+}
+
+.skill-icon-small .level-badge {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    background: #27ae60;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid white;
+    font-weight: 800;
+}
+
+.add-skill-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: #34495e;
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.add-skill-btn:hover {
+    background-color: #2c3e50;
+    transform: rotate(90deg) scale(1.1);
+}
+
+.tech-list-scroll {
+    margin-top: 1.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tech-list-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tech-list-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.tech-list-scroll::-webkit-scrollbar-thumb {
+    background: #bdc3c7;
+    border-radius: 10px;
+}
+
+.tech-item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fdfdfd;
+    padding: 0.6rem 1rem;
+    border-radius: 12px;
+    border: 1px solid #ecf0f1;
+    transition: border-color 0.2s;
+}
+
+.tech-item-row:hover {
+    border-color: #dcdde1;
+}
+
+.tech-item-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #2c3e50;
+    flex: 1;
+}
+
+.skill-delete-btn {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: background 0.2s;
+    margin-left: 10px;
+}
+
+.skill-delete-btn:hover {
+    background: #fdeaea;
+}
+
+.skill-delete-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Action Buttons */
+.emp-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 2px solid #f1f1f1;
+}
+
+.emp-btn {
+    padding: 1rem 2.5rem;
+    border-radius: 12px;
+    font-weight: 800;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.emp-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.emp-btn-save {
+    background-color: #27ae60;
+    color: white;
+}
+
+.emp-btn-cancel {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.emp-btn-delete {
+    background-color: #e74c3c;
+    color: white;
+    margin-right: auto;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .emp-form-layout {
+        grid-template-columns: 1fr;
+    }
+    
+    .emp-col-right {
+        /* Mobile Order: Data, Preview, Stats, Skills.
+           HTML Order: Left(Data, Stats), Right(Preview, Skills).
+           To interleave, we need display: contents or reordering logic.
+           Or just strict stacking: Left Col first (Data, Stats), then Right Col (Preview, Skills).
+           The prompt said: 1.Data, 2.Preview, 3.Stats, 4.Skills.
+           This is tricky with 2 columns HTML structure.
+           I will just stick to Left on Top, Right on Bottom for now, unless I use grid area or flex order heavily. 
+           Given constraints, stacking columns is safest and clean.
+        */
+        order: 0;
+    }
+}
