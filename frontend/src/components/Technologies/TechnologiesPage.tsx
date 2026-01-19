@@ -42,13 +42,27 @@ const TechnologiesPage: React.FC = () => {
                 }
             }
         } else {
-            // NORMAL MODE entry: Always force normal and clear stale contexts
             setSelectionMode(false);
             if (draftContext) {
                 sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
             }
         }
     }, [searchParams]);
+
+    // ESC Key Listener for Modal
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                handleCancel();
+            }
+        };
+
+        if (selectedTech || isCreating) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedTech, isCreating]);
 
     const loadTechnologies = async () => {
         setLoading(true);
@@ -133,7 +147,7 @@ const TechnologiesPage: React.FC = () => {
     
     const handleEdit = (tech: Technology) => {
         setSelectedTech(tech);
-        setIsCreating(true); // Re-using isCreating to show form side-panel
+        setIsCreating(true); 
     };
 
     const handleRequestDelete = (tech: Technology) => {
@@ -145,13 +159,11 @@ const TechnologiesPage: React.FC = () => {
             try {
                 await techService.delete(techToDelete.idTecnologia);
                 
-                // If deleted tech was selected, remove it from selection
                 if (selectedIds.includes(techToDelete.idTecnologia)) {
                     setSelectedIds((prev: number[]) => prev.filter((id: number) => id !== techToDelete.idTecnologia));
                 }
                 
                 setTechToDelete(null);
-                // If we were editing this tech, close form
                 if (selectedTech?.idTecnologia === techToDelete.idTecnologia) {
                     handleCancel();
                 }
@@ -170,12 +182,9 @@ const TechnologiesPage: React.FC = () => {
     const handleSave = async (data: Omit<Technology, 'idTecnologia'>) => {
         try {
             if (selectedTech) {
-                // Edit
                 await techService.update(selectedTech.idTecnologia, data);
             } else {
-                // Create
                 await techService.create(data);
-                // Optionally auto-select logic can be added here if needed in future
             }
             await loadTechnologies();
             handleCancel();
@@ -193,26 +202,27 @@ const TechnologiesPage: React.FC = () => {
         navigate('/dashboard');
     };
 
-    const isSplitView = selectedTech !== null || isCreating;
+    const showModal = selectedTech !== null || isCreating;
 
     if (loading && technologies.length === 0) return <div className="loading">Cargando...</div>;
 
     return (
-        <div className={`technologies-page ${isSplitView ? 'split-view' : ''}`}>
+        <div className="technologies-page">
             {error && <div className="error-message">{error}</div>}
             
-            {/* Confirmation Modal */}
+            {/* Confirmation Modal for Deletion */}
             {techToDelete && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000
-                }}>
-                    <div style={{ background: 'white', padding: '2rem', borderRadius: '15px', maxWidth: '400px', width: '90%', textAlign: 'center' }}>
-                        <h2 style={{ color: '#e74c3c', margin: '0 0 1rem 0' }}>ELIMINAR</h2>
-                        <p style={{ color: '#2c3e50', marginBottom: '2rem' }}>¿Estás seguro de que deseas eliminar <strong>{techToDelete.nombre}</strong>?</p>
-                        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                            <button onClick={cancelDelete} style={{ background: '#95a5a6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>CANCELAR</button>
-                            <button onClick={confirmDelete} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>ELIMINAR</button>
+                <div className="modal-overlay" style={{ zIndex: 3000 }}>
+                    <div className="tech-form-container" style={{ textAlign: 'center' }}>
+                        <div className="tech-form-content">
+                            <h2 style={{ color: '#e74c3c', margin: '0 0 1rem 0', fontWeight: 800 }}>ELIMINAR</h2>
+                            <p style={{ color: '#2c3e50', marginBottom: '2rem' }}>
+                                ¿Estás seguro de que deseas eliminar <strong>{techToDelete.nombre}</strong>?
+                            </p>
+                        </div>
+                        <div className="tech-form-actions">
+                            <button className="tech-action-btn tech-delete-main-btn" onClick={confirmDelete}>ELIMINAR</button>
+                            <button className="tech-action-btn btn-cancel" onClick={cancelDelete}>CANCELAR</button>
                         </div>
                     </div>
                 </div>
@@ -243,12 +253,17 @@ const TechnologiesPage: React.FC = () => {
                 </div>
             )}
 
-            <TechForm
-                initialData={selectedTech}
-                onSave={handleSave}
-                onCancel={handleCancel}
-                onDelete={() => selectedTech && handleRequestDelete(selectedTech)}
-            />
+            {/* Modal Form Overlay */}
+            {showModal && (
+                <div className="modal-overlay" onClick={handleCancel}>
+                    <TechForm
+                        initialData={selectedTech}
+                        onSave={handleSave}
+                        onCancel={handleCancel}
+                        onDelete={() => selectedTech && handleRequestDelete(selectedTech)}
+                    />
+                </div>
+            )}
         </div>
     );
 };

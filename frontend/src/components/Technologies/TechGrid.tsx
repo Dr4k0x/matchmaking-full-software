@@ -42,9 +42,9 @@ const TechGrid: React.FC<TechGridProps> = ({
                     </button>
                 )}
                 {isSelectionMode && (
-                     <div style={{ flex: 1 }}></div> // Spacer if back btn hidden
+                     <div style={{ flex: 1 }}></div>
                 )}
-                <h1 className="tech-title">{isSelectionMode ? 'SELECCIONAR TECNOLOGIAS' : 'TECNOLOGIAS'}</h1>
+                <h1 className="tech-title">{isSelectionMode ? 'SELECCIONAR' : 'TECNOLOGIAS'}</h1>
             </div>
             <div className="tech-grid">
                 {technologies.map((tech) => (
@@ -59,7 +59,6 @@ const TechGrid: React.FC<TechGridProps> = ({
                             }
                         }}
                     >
-                        {/* Checkbox overlay for selection mode */}
                         {isSelectionMode && (
                             <div className={`tech-checkbox ${selectedIds.includes(tech.idTecnologia) ? 'checked' : ''}`}>
                                 {selectedIds.includes(tech.idTecnologia) && (
@@ -70,7 +69,6 @@ const TechGrid: React.FC<TechGridProps> = ({
                             </div>
                         )}
 
-                        {/* Actions Overlay (Edit/Delete) - Visible on Hover even in Selection Mode */}
                         <div className="tech-actions-overlay" onClick={(e) => e.stopPropagation()}>
                             {onEdit && (
                                 <div className="tech-action-icon edit" onClick={() => onEdit(tech)} title="Editar">
@@ -91,7 +89,6 @@ const TechGrid: React.FC<TechGridProps> = ({
                         </div>
 
                         <div className="tech-circle">
-                            {/* File/Code Icon */}
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -104,7 +101,6 @@ const TechGrid: React.FC<TechGridProps> = ({
                     </div>
                 ))}
 
-                {/* Add Button */}
                 <div className="tech-item add-tech-btn" onClick={onAdd}>
                     <div className="tech-circle">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
