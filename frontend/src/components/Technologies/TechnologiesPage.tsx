@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import TechGrid from './TechGrid';
 import { type Technology } from '../../types';
 import TechForm from './TechForm';
@@ -23,20 +23,32 @@ const TechnologiesPage: React.FC = () => {
 
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const location = useLocation();
 
     useEffect(() => {
         loadTechnologies();
         
         const isSelectModeSignal = searchParams.get('mode') === 'select';
-        const draftContext = sessionStorage.getItem('EMPLOYEE_DRAFT_CONTEXT');
+        const stateMetadata = location.state as any;
+        const draftKey = stateMetadata?.draftKey;
 
-        if (isSelectModeSignal) {
+        if (isSelectModeSignal && draftKey) {
             setSelectionMode(true);
-            if (draftContext) {
+            const draftRaw = sessionStorage.getItem(draftKey);
+
+            if (draftRaw) {
                 try {
-                    const context = JSON.parse(draftContext);
-                    if (context.selectedIds) {
-                        setSelectedIds(context.selectedIds);
+                    const envelope = JSON.parse(draftRaw);
+                    const now = Date.now();
+                    // TTL Check (envelope.ts + envelope.ttlMs > now)
+                    if (envelope.ts && envelope.ttlMs && (envelope.ts + envelope.ttlMs > now)) {
+                        const context = envelope.data;
+                        if (context.selectedIds) {
+                            setSelectedIds(context.selectedIds);
+                        }
+                    } else {
+                        console.warn("Draft context expired, cleaning up...");
+                        sessionStorage.removeItem(draftKey);
                     }
                 } catch (e) {
                     console.error("Invalid Draft Context", e);
@@ -44,11 +56,8 @@ const TechnologiesPage: React.FC = () => {
             }
         } else {
             setSelectionMode(false);
-            if (draftContext) {
-                sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
-            }
         }
-    }, [searchParams]);
+    }, [searchParams, location.state]);
 
     // ESC Key Listener for Modal
     useEffect(() => {
@@ -93,52 +102,38 @@ const TechnologiesPage: React.FC = () => {
     };
 
     const handleConfirmSelection = () => {
-        const draftContextRaw = sessionStorage.getItem('EMPLOYEE_DRAFT_CONTEXT');
-        let returnPath = '/employees';
-        let employeeId = null;
-        let mode: 'edit' | 'create' = 'create';
+        const stateMetadata = location.state as any;
+        const returnPath = stateMetadata?.returnPath || '/employees';
+        const selectionKey = stateMetadata?.selectionKey;
+        const selectedTechs = technologies.filter(t => selectedIds.includes(t.idTecnologia));
 
-        if (draftContextRaw) {
-            try {
-                const context = JSON.parse(draftContextRaw);
-                if (context.returnPath) returnPath = context.returnPath;
-                employeeId = context.employeeId;
-                mode = context.mode || 'create';
-            } catch (e) {}
+        if (selectionKey) {
+            const envelope = {
+                data: { selectedTechs, restoredFromSelection: true },
+                ts: Date.now(),
+                ttlMs: 20 * 60 * 1000 // 20 min
+            };
+            sessionStorage.setItem(selectionKey, JSON.stringify(envelope));
         }
 
-        const selectionPayload = {
-            employeeId,
-            mode,
-            selected: selectedIds.map(id => ({ tecnologiaId: id, nivel: 1 })),
-            ts: Date.now(),
-            expiresAt: Date.now() + 20 * 60 * 1000 // 20 min TTL
-        };
-
-        const storageKey = `techSelection:${employeeId ?? 'new'}:${mode}`;
-        
-        sessionStorage.setItem(storageKey, JSON.stringify(selectionPayload));
-        
         navigate(returnPath, { 
             state: { 
-                restoredFromSelection: true, 
-                selectionPayload 
+                ...(location.state as object || {}),
+                selectedTechs,
+                restoredFromSelection: true 
             } 
         });
     };
 
     const handleCancelSelection = () => {
-        const draftContextRaw = sessionStorage.getItem('EMPLOYEE_DRAFT_CONTEXT');
-        let returnPath = '/employees';
-
-        if (draftContextRaw) {
-            try {
-                const context = JSON.parse(draftContextRaw);
-                if (context.returnPath) returnPath = context.returnPath;
-            } catch (e) {}
-        }
-        
-        navigate(returnPath, { state: { restoredFromSelection: true, selectionPayload: null } });
+        const stateMetadata = location.state as any;
+        const returnPath = stateMetadata?.returnPath || '/employees';
+        navigate(returnPath, { 
+            state: { 
+                ...(location.state as object || {}),
+                restoredFromSelection: true 
+            } 
+        });
     };
 
     const handleAdd = () => {

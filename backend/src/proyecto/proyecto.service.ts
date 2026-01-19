@@ -12,6 +12,8 @@ import { Proyecto } from './entities/proyecto.entity';
 import { JwtPayload } from 'src/auth/jwt-payload.interface';
 import { NivelProyectoService } from 'src/nivel-proyecto/nivel-proyecto.service';
 import { TransactionService } from 'src/common/transaction.service';
+import { Tecnologia } from '../tecnologia/entities/tecnologia.entity';
+import { NivelProyecto } from '../nivel-proyecto/entities/nivel-proyecto.entity';
 
 @Injectable()
 export class ProyectoService {
@@ -26,8 +28,21 @@ export class ProyectoService {
     try {
       return await this.transactionService.runInTransaction(
         async (manager: EntityManager) => {
+          // Validate technologies ownership if any
+          if (createProyectoDto.nivelesProyecto && createProyectoDto.nivelesProyecto.length > 0) {
+            const techIds = createProyectoDto.nivelesProyecto.map(n => n.idTecnologia);
+            await this.validateTechnologiesOwnership(techIds, user.sub, manager);
+          }
+
           const proyecto = manager.getRepository(Proyecto).create({
-            ...createProyectoDto,
+            nombre: createProyectoDto.nombre,
+            descripcion: createProyectoDto.descripcion,
+            fechaCreacion: createProyectoDto.fechaCreacion,
+            fechaFinalizacion: createProyectoDto.fechaFinalizacion,
+            estado: createProyectoDto.estado,
+            nivelColaborativo: createProyectoDto.nivelColaborativo,
+            nivelOrganizativo: createProyectoDto.nivelOrganizativo,
+            nivelVelocidadDesarrollo: createProyectoDto.nivelVelocidadDesarrollo,
             idUsuario: user.sub,
           });
 
@@ -35,19 +50,34 @@ export class ProyectoService {
             .getRepository(Proyecto)
             .save(proyecto);
 
-          if (Array.isArray(createProyectoDto?.niveles)) {
+          if (Array.isArray(createProyectoDto?.nivelesProyecto)) {
             await this.nivelProyectoService.createMany(
-              { niveles: createProyectoDto.niveles },
+              { niveles: createProyectoDto.nivelesProyecto },
               savedProyecto.idProyecto,
               manager,
             );
           }
 
-          return { message: 'Proyecto creado correctamente' };
+          return { 
+            message: 'Proyecto creado correctamente',
+            idProyecto: savedProyecto.idProyecto 
+          };
         },
       );
-    } catch {
-      throw new InternalServerErrorException('Error al crear el proyecto');
+    } catch (error) {
+      if (error instanceof NotFoundException || error.name === 'UnauthorizedException') throw error;
+      throw new InternalServerErrorException('Error al crear el proyecto: ' + error.message);
+    }
+  }
+
+  // Helper to validate technologies belong to the user
+  private async validateTechnologiesOwnership(techIds: number[], idUsuario: number, manager: EntityManager) {
+    const count = await manager.getRepository(Tecnologia).count({
+      where: techIds.map(id => ({ idTecnologia: id, idUsuario }))
+    });
+
+    if (count !== techIds.length) {
+      throw new NotFoundException('Una o más tecnologías no son válidas para este usuario');
     }
   }
 
@@ -57,17 +87,9 @@ export class ProyectoService {
 
     const queryBuilder = this.proyectoRepository
       .createQueryBuilder('proyecto')
+      .leftJoinAndSelect('proyecto.nivelesProyecto', 'nivelesProyecto')
+      .leftJoinAndSelect('nivelesProyecto.tecnologia', 'tecnologia')
       .where('proyecto.idUsuario = :idUsuario', { idUsuario: user.sub });
-
-    if (hasTecnologiaFilters) {
-      queryBuilder
-        .innerJoin('proyecto.nivelesProyecto', 'nivelesProyecto')
-        .innerJoin('nivelesProyecto.tecnologia', 'tecnologia');
-    } else {
-      queryBuilder
-        .leftJoinAndSelect('proyecto.nivelesProyecto', 'nivelesProyecto')
-        .leftJoinAndSelect('nivelesProyecto.tecnologia', 'tecnologia');
-    }
 
     if (filters?.nombreProyecto) {
       queryBuilder.andWhere('proyecto.nombre ILIKE :nombreProyecto', {
@@ -126,29 +148,17 @@ export class ProyectoService {
       });
     }
 
-    const proyectos = await queryBuilder.distinct(true).getMany();
+    const proyectos = await queryBuilder.getMany();
 
     if (hasTecnologiaFilters) {
-      await Promise.all(
-        proyectos.map(async (proyecto) => {
-          const proyectoCompleto = await this.proyectoRepository
-            .createQueryBuilder('proyecto')
-            .leftJoinAndSelect('proyecto.nivelesProyecto', 'nivelesProyecto')
-            .leftJoinAndSelect('nivelesProyecto.tecnologia', 'tecnologia')
-            .where('proyecto.idProyecto = :idProyecto', {
-              idProyecto: proyecto.idProyecto,
-            })
-            .getOne();
-
-          if (proyectoCompleto?.nivelesProyecto) {
-            proyecto.nivelesProyecto = proyectoCompleto.nivelesProyecto;
-            this.ordenarTecnologias(proyecto, filters);
-          }
-        }),
-      );
+        this.proyectosFiltrarTecnologias(proyectos, filters);
     }
 
     return proyectos;
+  }
+
+  private proyectosFiltrarTecnologias(proyectos: Proyecto[], filters: FindProyectoDto) {
+    proyectos.forEach(proyecto => this.ordenarTecnologias(proyecto, filters));
   }
 
   private ordenarTecnologias(proyecto: Proyecto, filters?: FindProyectoDto) {
@@ -162,25 +172,15 @@ export class ProyectoService {
     proyecto.nivelesProyecto.sort((a, b) => {
       const aNombre = a.tecnologia?.nombre?.toLowerCase() || '';
       const bNombre = b.tecnologia?.nombre?.toLowerCase() || '';
-      const aTipo = a.tecnologia?.tipo || '';
-      const bTipo = b.tecnologia?.tipo || '';
-
+      
       let aScore = 0;
       let bScore = 0;
 
-      if (nombreTecnologiaLower && aNombre.includes(nombreTecnologiaLower)) {
-        aScore += 2;
-      }
-      if (nombreTecnologiaLower && bNombre.includes(nombreTecnologiaLower)) {
-        bScore += 2;
-      }
+      if (nombreTecnologiaLower && aNombre.includes(nombreTecnologiaLower)) aScore += 2;
+      if (nombreTecnologiaLower && bNombre.includes(nombreTecnologiaLower)) bScore += 2;
 
-      if (tipoTecnologia && aTipo === tipoTecnologia) {
-        aScore += 1;
-      }
-      if (tipoTecnologia && bTipo === tipoTecnologia) {
-        bScore += 1;
-      }
+      if (tipoTecnologia && a.tecnologia?.tipo === tipoTecnologia) aScore += 1;
+      if (tipoTecnologia && b.tecnologia?.tipo === tipoTecnologia) bScore += 1;
 
       return bScore - aScore;
     });
@@ -200,19 +200,63 @@ export class ProyectoService {
 
   async update(id: number, updateProyectoDto: UpdateProyectoDto, user: JwtPayload) {
     try {
-      const result = await this.proyectoRepository.update(
-        { idProyecto: id, idUsuario: user.sub },
-        updateProyectoDto, // ensure DTO clean
-      );
+      return await this.transactionService.runInTransaction(async (manager: EntityManager) => {
+        // 1. Confirm ownership and existence
+        const proyecto = await manager.getRepository(Proyecto).findOne({
+          where: { idProyecto: id, idUsuario: user.sub }
+        });
 
-      if (result.affected === 0) {
-        throw new NotFoundException(`Proyecto con id ${id} no encontrado`);
-      }
+        if (!proyecto) {
+          throw new NotFoundException(`Proyecto con id ${id} no encontrado o no pertenece al usuario`);
+        }
 
-      return { message: 'Proyecto actualizado correctamente' };
+        // 2. Separate logic: Base fields vs Levels
+        const { nivelesProyecto, ...fieldsToUpdate } = updateProyectoDto;
+        
+        // Update base fields
+        if (fieldsToUpdate.nombre) proyecto.nombre = fieldsToUpdate.nombre;
+        if (fieldsToUpdate.descripcion !== undefined) proyecto.descripcion = fieldsToUpdate.descripcion;
+        if (fieldsToUpdate.fechaCreacion) proyecto.fechaCreacion = new Date(fieldsToUpdate.fechaCreacion);
+        if (fieldsToUpdate.fechaFinalizacion) proyecto.fechaFinalizacion = new Date(fieldsToUpdate.fechaFinalizacion);
+        if (fieldsToUpdate.estado) proyecto.estado = fieldsToUpdate.estado as any;
+        if (fieldsToUpdate.nivelColaborativo !== undefined) proyecto.nivelColaborativo = fieldsToUpdate.nivelColaborativo;
+        if (fieldsToUpdate.nivelOrganizativo !== undefined) proyecto.nivelOrganizativo = fieldsToUpdate.nivelOrganizativo;
+        if (fieldsToUpdate.nivelVelocidadDesarrollo !== undefined) proyecto.nivelVelocidadDesarrollo = fieldsToUpdate.nivelVelocidadDesarrollo;
+
+        await manager.getRepository(Proyecto).save(proyecto);
+
+        // 3. Clear & Create for Technology Levels (Sync)
+        if (nivelesProyecto !== undefined) {
+          // Validate technology ownership if there are IDs to sync
+          if (nivelesProyecto && nivelesProyecto.length > 0) {
+            const techIds = nivelesProyecto.map(n => n.idTecnologia);
+            await this.validateTechnologiesOwnership(techIds, user.sub, manager);
+          }
+
+          // Clear existing relations
+          await manager.getRepository(NivelProyecto).delete({ idProyecto: id });
+
+          // Re-insert if provided (non-empty)
+          if (nivelesProyecto && nivelesProyecto.length > 0) {
+            const nivelesParaInsertar = nivelesProyecto.map(n => ({
+              idProyecto: id,
+              idTecnologia: n.idTecnologia,
+              nivelRequerido: n.nivelRequerido
+            }));
+            
+            await manager.getRepository(NivelProyecto).insert(nivelesParaInsertar);
+          }
+        }
+
+        // 4. Return complete object with fresh relations
+        return await manager.getRepository(Proyecto).findOne({
+          where: { idProyecto: id },
+          relations: ['nivelesProyecto', 'nivelesProyecto.tecnologia']
+        });
+      });
     } catch (e) {
       if (e instanceof NotFoundException) throw e;
-      throw new InternalServerErrorException('Error al actualizar el proyecto');
+      throw new InternalServerErrorException('Error al actualizar el proyecto: ' + e.message);
     }
   }
 

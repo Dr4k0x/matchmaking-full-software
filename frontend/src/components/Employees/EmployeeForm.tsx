@@ -35,45 +35,50 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
 
     const navigate = useNavigate();
     const location = useLocation();
+    const [draftNonce] = useState(() => (location.state as any)?.draftNonce || Date.now().toString());
 
     useEffect(() => {
-        // 1. Prepare Storage Keys
-        const mode = initialData ? 'edit' : 'create';
-        const currentId = initialData?.idCarta;
-        const storageKey = `techSelection:${currentId ?? 'new'}:${mode}`;
+        // 1. Prepare Storage Keys with Nonce if new
+        const isNew = !initialData;
+        const idToken = isNew ? `new:${draftNonce}` : initialData.idCarta.toString();
+        const draftKey = `EMPLOYEE_DRAFT_CONTEXT:${idToken}`;
+        const selectionKey = `TECH_SELECTION:employees:${idToken}`;
 
         // 2. Sources of Selection (State > Storage Fallback)
-        let selectionPayload: SelectionState['selectionPayload'] = undefined;
+        let selectionPayload: any = undefined;
         
         // Priority 1: Navigation State
-        const locState = location.state as SelectionState;
+        const locState = location.state as SelectionState & { selectedTechs?: Technology[] };
         if (locState?.selectionPayload) {
             selectionPayload = locState.selectionPayload;
-        } 
+        } else if (locState?.selectedTechs) {
+            selectionPayload = { selected: locState.selectedTechs.map(t => ({ tecnologiaId: t.idTecnologia, nivel: 1 })) };
+        }
         
-        // Priority 2: Session Storage Fallback
+        // Priority 2: Session Storage Fallback (with TTL check)
         if (!selectionPayload) {
-            const selectionFallbackRaw = sessionStorage.getItem(storageKey);
-            if (selectionFallbackRaw) {
+            const selectionRaw = sessionStorage.getItem(selectionKey);
+            if (selectionRaw) {
                 try {
-                    const parsed = JSON.parse(selectionFallbackRaw);
-                    // 20 min TTL check
-                    if (Date.now() < (parsed.expiresAt || 0)) {
-                        selectionPayload = parsed;
+                    const envelope = JSON.parse(selectionRaw);
+                    const now = Date.now();
+                    if (envelope.ts && envelope.ttlMs && (envelope.ts + envelope.ttlMs > now)) {
+                        selectionPayload = envelope.data;
+                    } else {
+                        sessionStorage.removeItem(selectionKey);
                     }
                 } catch (e) {}
             }
         }
 
-        // 3. Rehydrating from Draft Context
-        const draftContextRaw = sessionStorage.getItem('EMPLOYEE_DRAFT_CONTEXT');
-        if (draftContextRaw) {
+        // 3. Rehydrating from Draft Context (with TTL check)
+        const draftRaw = sessionStorage.getItem(draftKey);
+        if (draftRaw) {
             try {
-                const context = JSON.parse(draftContextRaw);
-                const isCorrectEdit = initialData && context.mode === 'edit' && context.employeeId === initialData.idCarta;
-                const isCorrectCreate = !initialData && context.mode === 'create';
-
-                if (isCorrectEdit || isCorrectCreate) {
+                const envelope = JSON.parse(draftRaw);
+                const now = Date.now();
+                if (envelope.ts && envelope.ttlMs && (envelope.ts + envelope.ttlMs > now)) {
+                    const context = envelope.data;
                     if (context.formData) {
                         setNombreApellido(context.formData.nombreApellido || '');
                         setCedulaIdentidad(context.formData.cedulaIdentidad || '');
@@ -83,12 +88,13 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
                         let currentNiveles = [...(context.formData.niveles || [])];
 
                         // 4. Robust Merge of Technology Selection
-                        if (selectionPayload?.selected) {
-                            const incoming = selectionPayload.selected;
-                            currentNiveles = incoming.map((sel) => {
-                                const existing = currentNiveles.find((p: NivelCarta) => p.idTecnologia === sel.tecnologiaId);
+                        if (selectionPayload?.selected || selectionPayload?.selectedTechs) {
+                            const incoming = selectionPayload.selected || selectionPayload.selectedTechs.map((t: any) => ({ tecnologiaId: t.idTecnologia, nivel: 1 }));
+                            currentNiveles = incoming.map((sel: any) => {
+                                const techId = sel.tecnologiaId || sel.idTecnologia;
+                                const existing = currentNiveles.find((p: NivelCarta) => p.idTecnologia === techId);
                                 return { 
-                                    idTecnologia: sel.tecnologiaId, 
+                                    idTecnologia: techId, 
                                     nivelDominado: existing ? existing.nivelDominado : (sel.nivel || 1) 
                                 };
                             });
@@ -97,6 +103,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
                         setNiveles(currentNiveles);
                         return;
                     }
+                } else {
+                    sessionStorage.removeItem(draftKey);
                 }
             } catch (e) {
                 console.error("Error rehydrating draft", e);
@@ -121,7 +129,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
             setStats({ poderSocial: 1, sabiduria: 1, velocidad: 1 });
             setNiveles([]);
         }
-    }, [initialData, location.state]);
+    }, [initialData, location.state, draftNonce]);
 
     const handleStatChange = (stat: keyof typeof stats, delta: number) => {
         setStats(prev => ({
@@ -131,21 +139,38 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
     };
 
     const handleAddTechNavigation = () => {
+        const isNew = !initialData;
+        const idToken = isNew ? `new:${draftNonce}` : initialData.idCarta.toString();
+        const draftKey = `EMPLOYEE_DRAFT_CONTEXT:${idToken}`;
+        const selectionKey = `TECH_SELECTION:employees:${idToken}`;
+
         const context = {
-            mode: initialData ? 'edit' : 'create',
-            employeeId: initialData?.idCarta,
-            timestamp: Date.now(),
-            returnPath: window.location.pathname + window.location.search,
-            formData: {
-                nombreApellido,
-                cedulaIdentidad,
-                tipoCarta,
-                stats,
-                niveles
-            }
+            data: {
+                mode: isNew ? 'create' : 'edit',
+                employeeId: initialData?.idCarta,
+                formData: {
+                    nombreApellido,
+                    cedulaIdentidad,
+                    tipoCarta,
+                    stats,
+                    niveles
+                }
+            },
+            ts: Date.now(),
+            ttlMs: 30 * 60 * 1000 // 30 min
         };
-        sessionStorage.setItem('EMPLOYEE_DRAFT_CONTEXT', JSON.stringify(context));
-        navigate('/technologies?mode=select');
+        sessionStorage.setItem(draftKey, JSON.stringify(context));
+
+        navigate('/technologies?mode=select', { 
+            state: { 
+                origin: 'employees',
+                returnPath: location.pathname,
+                draftKey,
+                selectionKey,
+                draftNonce,
+                selectedIds: niveles.map(n => n.idTecnologia)
+            } 
+        });
     };
 
     const handleRemoveTechRequest = (id: number) => {
@@ -197,8 +222,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
         onSave(payload);
     };
     
+    const handleCleanup = () => {
+        const isNew = !initialData;
+        const idToken = isNew ? `new:${draftNonce}` : initialData.idCarta.toString();
+        sessionStorage.removeItem(`EMPLOYEE_DRAFT_CONTEXT:${idToken}`);
+        sessionStorage.removeItem(`TECH_SELECTION:employees:${idToken}`);
+    };
+
     const handleCancelForm = () => {
-         onCancel();
+        handleCleanup();
+        onCancel();
     };
 
     return (

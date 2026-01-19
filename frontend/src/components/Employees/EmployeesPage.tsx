@@ -28,39 +28,52 @@ const EmployeesPage: React.FC = () => {
         loadData();
     }, []);
 
+    const [draftNonce, setDraftNonce] = useState(() => (location.state as any)?.draftNonce || '');
+
     // Selection Restoration from Picker
     useEffect(() => {
         const restore = async () => {
             if (employees.length === 0) return;
 
-            const state = location.state as { restoredFromSelection?: boolean } | null;
+            const state = location.state as { restoredFromSelection?: boolean, draftNonce?: string } | null;
             
             if (state?.restoredFromSelection) {
-                const draftContextRaw = sessionStorage.getItem('EMPLOYEE_DRAFT_CONTEXT');
-                if (draftContextRaw) {
-                    try {
-                        const context = JSON.parse(draftContextRaw);
-                        if (context.mode === 'create') {
-                            setIsCreating(true);
-                            setSelectedId(null);
-                        } else if (context.mode === 'edit' && context.employeeId) {
-                            setSelectedId(context.employeeId);
-                            setIsCreating(false);
+                const nonceToUse = state.draftNonce || draftNonce;
+                const idToken = selectedId ? selectedId.toString() : (nonceToUse ? `new:${nonceToUse}` : '');
+                
+                if (idToken) {
+                    const draftKey = `EMPLOYEE_DRAFT_CONTEXT:${idToken}`;
+                    const draftRaw = sessionStorage.getItem(draftKey);
+
+                    if (draftRaw) {
+                        try {
+                            const envelope = JSON.parse(draftRaw);
+                            const now = Date.now();
+                            if (envelope.ts && envelope.ttlMs && (envelope.ts + envelope.ttlMs > now)) {
+                                const context = envelope.data;
+                                if (context.mode === 'create') {
+                                    setIsCreating(true);
+                                    setSelectedId(null);
+                                } else if (context.mode === 'edit' && context.employeeId) {
+                                    setSelectedId(context.employeeId);
+                                    setIsCreating(false);
+                                }
+                                if (state.draftNonce) setDraftNonce(state.draftNonce);
+                                setFormInstanceKey(k => k + 1);
+                            }
+                        } catch (e) {
+                            console.error('Error restoring selection context', e);
                         }
-                        
-                        setFormInstanceKey(k => k + 1);
-                    } catch (e) {
-                        console.error('Error restoring selection context', e);
                     }
                 }
 
-                // Clean navigation state
-                navigate(location.pathname, { replace: true, state: {} });
+                // Clean navigation state but preserve nonce if needed
+                navigate(location.pathname, { replace: true, state: { draftNonce: state.draftNonce || draftNonce } });
             }
         };
 
         restore();
-    }, [employees, location.state, navigate, location.pathname]);
+    }, [employees, location.state, navigate, location.pathname, selectedId]);
 
     // ESC Key Listener for Modal
     useEffect(() => {
@@ -94,30 +107,24 @@ const EmployeesPage: React.FC = () => {
     };
 
     const clearFormDrafts = () => {
-        sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
-        const currentId = selectedId ?? 'new';
-        sessionStorage.removeItem(`techSelection:${currentId}:create`);
-        sessionStorage.removeItem(`techSelection:${currentId}:edit`);
-        if (selectedId) sessionStorage.removeItem(`techSelection:new:create`);
+        const idToken = isCreating ? `new:${draftNonce}` : selectedId?.toString();
+        if (idToken) {
+            sessionStorage.removeItem(`EMPLOYEE_DRAFT_CONTEXT:${idToken}`);
+            sessionStorage.removeItem(`TECH_SELECTION:employees:${idToken}`);
+        }
     };
 
     const handleSelect = (emp: Employee) => {
-        const returnedFromPicker = (location.state as any)?.restoredFromSelection === true;
-        if (!returnedFromPicker) {
-            sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
-        }
         setSelectedId(emp.idCarta);
         setIsCreating(false);
+        setDraftNonce(''); // No nonce needed for edit by default
         setFormInstanceKey(k => k + 1);
     };
 
     const handleAdd = () => {
-        const returnedFromPicker = (location.state as any)?.restoredFromSelection === true;
-        if (!returnedFromPicker) {
-            sessionStorage.removeItem('EMPLOYEE_DRAFT_CONTEXT');
-        }
         setSelectedId(null);
         setIsCreating(true);
+        setDraftNonce(Date.now().toString());
         setFormInstanceKey(k => k + 1);
     };
 
