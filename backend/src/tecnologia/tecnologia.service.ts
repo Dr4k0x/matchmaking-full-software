@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +11,7 @@ import { CreateTecnologiaDto } from './dto/create-tecnologia.dto';
 import { UpdateTecnologiaDto } from './dto/update-tecnologia.dto';
 import { FindTecnologiaDto } from './dto/find-tecnologia.dto';
 import { Tecnologia } from './entities/tecnologia.entity';
+import { NivelCarta } from '../nivel-carta/entities/nivel-carta.entity';
 import { JwtPayload } from 'src/auth/jwt-payload.interface';
 
 @Injectable()
@@ -17,6 +19,8 @@ export class TecnologiaService {
   constructor(
     @InjectRepository(Tecnologia)
     private readonly tecnologiaRepository: Repository<Tecnologia>,
+    @InjectRepository(NivelCarta)
+    private readonly nivelCartaRepository: Repository<NivelCarta>,
   ) {}
 
   async create(createTecnologiaDto: CreateTecnologiaDto, user: JwtPayload) {
@@ -104,6 +108,18 @@ export class TecnologiaService {
 
   async remove(id: number, user: JwtPayload) {
     const tecnologia = await this.findOne(id, user);
+
+    // Check if technology is used by any card
+    const count = await this.nivelCartaRepository.count({
+      where: { idTecnologia: id },
+    });
+
+    if (count > 0) {
+      throw new ConflictException(
+        'No se puede eliminar: esta tecnología la usa al menos un empleado.',
+      );
+    }
+
     await this.tecnologiaRepository.remove(tecnologia);
     return { message: `Tecnologia con id ${id} eliminada correctamente` };
   }

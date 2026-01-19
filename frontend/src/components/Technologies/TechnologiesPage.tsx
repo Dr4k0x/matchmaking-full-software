@@ -17,8 +17,9 @@ const TechnologiesPage: React.FC = () => {
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-    // Confirm Modal for Deletion
+    // Modals
     const [techToDelete, setTechToDelete] = useState<Technology | null>(null);
+    const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
 
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -170,7 +171,9 @@ const TechnologiesPage: React.FC = () => {
                 
                 await loadTechnologies();
             } catch (err: any) {
-                alert('Error al eliminar tecnología');
+                const message = err.response?.data?.message || 'Error al eliminar tecnología';
+                setErrorModal({ title: 'BLOQUEADO', message });
+                setTechToDelete(null); // Dismiss confirmation modal on error
             }
         }
     };
@@ -189,7 +192,10 @@ const TechnologiesPage: React.FC = () => {
             await loadTechnologies();
             handleCancel();
         } catch (err: any) {
-            alert('Error al guardar tecnología');
+            setErrorModal({ 
+                title: 'ERROR', 
+                message: err.response?.data?.message || 'Error al guardar tecnología' 
+            });
         }
     };
 
@@ -223,6 +229,32 @@ const TechnologiesPage: React.FC = () => {
                         <div className="tech-form-actions">
                             <button className="tech-action-btn tech-delete-main-btn" onClick={confirmDelete}>ELIMINAR</button>
                             <button className="tech-action-btn btn-cancel" onClick={cancelDelete}>CANCELAR</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Error Modal (Elegant Replacement for alert) */}
+            {errorModal && (
+                <div className="modal-overlay" style={{ zIndex: 4000 }} onClick={() => setErrorModal(null)}>
+                    <div className="tech-form-container" style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <div className="tech-form-content">
+                            <div className="tech-preview-circle" style={{ background: '#e74c3c', marginBottom: '1rem' }}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '40px', height: '40px' }}>
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                </svg>
+                            </div>
+                            <h2 style={{ color: '#e74c3c', margin: '0 0 1rem 0', fontWeight: 800 }}>{errorModal.title}</h2>
+                            <p style={{ color: '#2c3e50', marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 500 }}>
+                                {errorModal.message}
+                            </p>
+                        </div>
+                        <div className="tech-form-actions">
+                            <button className="tech-action-btn btn-cancel" onClick={() => setErrorModal(null)}>
+                                ENTENDIDO
+                            </button>
                         </div>
                     </div>
                 </div>
