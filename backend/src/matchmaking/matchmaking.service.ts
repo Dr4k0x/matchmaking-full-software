@@ -98,7 +98,7 @@ export class MatchmakingService {
         where: { idProyecto } as any,
       });
       if (existente) {
-        throw new ConflictException('Este proyecto ya tiene un matchmaking activo.');
+        throw new ConflictException('Este proyecto ya está asociado a un matchmaking activo.');
       }
 
       // 2) Business Rule: Cards availability
@@ -108,7 +108,7 @@ export class MatchmakingService {
         .getOne();
 
       if (anyOccupied) {
-        throw new ConflictException(`La carta ${anyOccupied.nombreApellido} ya está asignada a otro matchmaking.`);
+        throw new ConflictException(`La carta de ${anyOccupied.nombreApellido} ya está asignada a otro matchmaking.`);
       }
 
       // 3) Calculate Percentage (reusing preview logic)
@@ -116,7 +116,7 @@ export class MatchmakingService {
 
       // 4) Business Rule: Score > 70
       if (porcentaje <= 70) {
-        throw new BadRequestException(`Matchmaking insuficiente: el porcentaje (${porcentaje}%) debe ser mayor a 70%.`);
+        throw new BadRequestException(`La compatibilidad es insuficiente (${porcentaje}%). Debe ser superior al 70% para crear el matchmaking.`);
       }
 
       // 5) Save Matchmaking
@@ -143,6 +143,9 @@ export class MatchmakingService {
         resultadoPorcentaje: saved.resultadoPorcentaje,
         proyecto: proyecto.nombre
       };
+    }).catch(e => {
+      console.error('Matchmaking creation error:', e);
+      throw e;
     });
   }
 

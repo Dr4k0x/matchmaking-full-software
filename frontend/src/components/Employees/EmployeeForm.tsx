@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { type Employee, type NivelCarta, type Technology } from '../../types';
 import './Employees.css';
+import ErrorModal from '../Modals/ErrorModal';
 
 interface EmployeeFormProps {
     initialData?: Employee | null;
@@ -9,6 +10,7 @@ interface EmployeeFormProps {
     onCancel: () => void;
     onDelete: () => void;
     availableTechnologies: Technology[];
+    onError?: (title: string, message: string | string[]) => void;
 }
 
 interface SelectionState {
@@ -19,7 +21,7 @@ interface SelectionState {
     };
 }
 
-const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCancel, onDelete, availableTechnologies }) => {
+const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCancel, onDelete, availableTechnologies, onError }) => {
     const [nombreApellido, setNombreApellido] = useState('');
     const [cedulaIdentidad, setCedulaIdentidad] = useState('');
     const [tipoCarta, setTipoCarta] = useState('');
@@ -32,6 +34,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
 
     const [niveles, setNiveles] = useState<NivelCarta[]>([]);
     const [techToDelete, setTechToDelete] = useState<number | null>(null);
+    const [error, setError] = useState<string | string[] | null>(null);
+    const [errorTitle, setErrorTitle] = useState('Error');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const isLocked = !!initialData?.matchmaking;
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -201,10 +208,35 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
         return availableTechnologies.find(t => t.idTecnologia === id)?.nombre || 'Unknown';
     };
 
-    const handleSubmit = () => {
-        if (!nombreApellido.trim()) return alert('El nombre es obligatorio.');
-        if (!cedulaIdentidad.trim()) return alert('La cédula es obligatoria.');
-        if (!tipoCarta) return alert('El tipo de carta es obligatorio.');
+    const handleSubmit = async () => {
+        if (isSubmitting) return;
+
+        if (!nombreApellido.trim()) {
+            setErrorTitle('DATOS FALTANTES');
+            setError('El nombre es obligatorio.');
+            return;
+        }
+        if (!cedulaIdentidad.trim()) {
+            setErrorTitle('DATOS FALTANTES');
+            setError('La cédula es obligatoria.');
+            return;
+        }
+        if (!tipoCarta) {
+            setErrorTitle('DATOS FALTANTES');
+            setError('El tipo de carta es obligatorio.');
+            return;
+        }
+
+        if (isLocked) {
+             const title = 'ACCIÓN NO PERMITIDA';
+             const message = 'No se puede modificar esta carta porque está asociada a un matchmaking.';
+             if (onError) onError(title, message);
+             else {
+                 setErrorTitle(title);
+                 setError(message);
+             }
+             return;
+        }
 
         const payload: Omit<Employee, 'idCarta'> = {
             nombreApellido,
@@ -219,7 +251,54 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
             }))
         };
         
-        onSave(payload);
+        setIsSubmitting(true);
+        try {
+            await onSave(payload);
+        } catch (err: any) {
+            console.error('Error saving employee:', err);
+            const backendMessage = err.response?.data?.message || 'Error al guardar el empleado';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
+            
+            if (onError) onError(title, backendMessage);
+            else {
+                setErrorTitle(title);
+                setError(backendMessage);
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (isSubmitting) return;
+
+        if (isLocked) {
+            const title = 'ACCIÓN NO PERMITIDA';
+            const message = 'No se puede eliminar esta carta porque está asociada a un matchmaking.';
+            if (onError) onError(title, message);
+            else {
+                setErrorTitle(title);
+                setError(message);
+            }
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await onDelete();
+        } catch (err: any) {
+            console.error('Error deleting employee:', err);
+            const backendMessage = err.response?.data?.message || 'Error al eliminar el empleado';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL ELIMINAR';
+            
+            if (onError) onError(title, backendMessage);
+            else {
+                setErrorTitle(title);
+                setError(backendMessage);
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     };
     
     const handleCleanup = () => {
@@ -405,17 +484,24 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ initialData, onSave, onCanc
 
                 <div className="emp-actions">
                     {initialData && (
-                        <button className="emp-btn emp-btn-delete" onClick={onDelete}>
-                            ELIMINAR
+                        <button className="emp-btn emp-btn-delete" onClick={handleDelete} disabled={isLocked || isSubmitting}>
+                            {isSubmitting ? '...' : 'ELIMINAR'}
                         </button>
                     )}
-                    <button className="emp-btn emp-btn-cancel" onClick={handleCancelForm}>
+                    <button className="emp-btn emp-btn-cancel" onClick={handleCancelForm} disabled={isSubmitting}>
                         CANCELAR
                     </button>
-                    <button className="emp-btn emp-btn-save" onClick={handleSubmit}>
-                        GUARDAR
+                    <button className="emp-btn emp-btn-save" onClick={handleSubmit} disabled={isLocked || isSubmitting}>
+                        {isSubmitting ? 'GUARDANDO...' : 'GUARDAR'}
                     </button>
                 </div>
+
+                <ErrorModal 
+                    isOpen={!!error}
+                    title={errorTitle}
+                    message={error || ''}
+                    onClose={() => setError(null)}
+                />
             </div>
         </div>
     );

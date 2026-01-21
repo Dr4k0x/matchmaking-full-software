@@ -18,6 +18,10 @@ const proyectoService = {
     const response = await api.patch<Project>(`/proyecto/${id}`, data);
     return response.data;
   },
+  updateEstado: async (id: number, estado: string) => {
+    const response = await api.patch<Project>(`/proyecto/${id}/estado`, { estado });
+    return response.data;
+  },
   delete: async (id: number) => {
     await api.delete(`/proyecto/${id}`);
   },

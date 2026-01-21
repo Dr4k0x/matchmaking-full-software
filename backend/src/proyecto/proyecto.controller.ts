@@ -16,6 +16,7 @@ import {
 import { ProyectoService } from './proyecto.service';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
 import { UpdateProyectoDto } from './dto/update-proyecto.dto';
+import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
 import { FindProyectoDto } from './dto/find-proyecto.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { JwtPayload } from 'src/auth/jwt-payload.interface';
@@ -67,6 +68,17 @@ export class ProyectoController {
   ) {
     if (!user) throw new UnauthorizedException('Usuario no autorizado');
     return this.proyectoService.update(id, updateProyectoDto, user);
+  }
+
+  @Patch(':id/estado')
+  @UsePipes(new ValidationPipe())
+  updateEstado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateEstadoDto: UpdateEstadoProyectoDto,
+    @CurrentUser() user: JwtPayload | undefined,
+  ) {
+    if (!user) throw new UnauthorizedException('Usuario no autorizado');
+    return this.proyectoService.updateEstado(id, updateEstadoDto, user);
   }
 
   @Delete(':id')

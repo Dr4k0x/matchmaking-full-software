@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -80,7 +81,7 @@ export class CartaService {
           idCarta: id,
           usuario: { idUsuario: user.sub } as any,
         },
-        relations: ['nivelesCarta', 'nivelesCarta.tecnologia'], // Load levels for form
+        relations: ['nivelesCarta', 'nivelesCarta.tecnologia', 'matchmaking'], // Load levels for form and matchmaking for locking
       });
 
       if (!carta) throw new NotFoundException('Carta no encontrada');
@@ -91,19 +92,36 @@ export class CartaService {
     }
   }
 
+  private cleanUpdateDto(dto: UpdateCartaDto): Partial<UpdateCartaDto> {
+    const cleaned = {};
+    Object.keys(dto).forEach(key => {
+      if (dto[key] !== undefined && dto[key] !== null) {
+        cleaned[key] = dto[key];
+      }
+    });
+    return cleaned;
+  }
+
   // ✅ Update robusto (maneja 0 tecnologias y consistencia)
   async update(id: number, dto: UpdateCartaDto, user: JwtPayload) {
+    const cleanedDto = this.cleanUpdateDto(dto);
+
     // 1️⃣ Verify ownership first
     const existing = await this.findOne(id, user); 
     if (!existing) throw new NotFoundException('Carta no encontrada');
 
+    // 🔒 Logical Lock Check
+    if (existing.matchmaking) {
+      if (Object.keys(cleanedDto).length > 0) {
+        throw new ConflictException('No se puede modificar esta carta porque está asociada a un matchmaking.');
+      }
+    }
+
     // 2️⃣ Relation Data (nivelesCarta)
-    // If it's undefined, it means we don't want to touch it.
-    // If it's [], we want to clear it.
-    const newLevels = dto.nivelesCarta;
+    const newLevels = (cleanedDto as any).nivelesCarta;
     
     // 3️⃣ Scalar Data (Filtering out relations)
-    const { nivelesCarta, ...scalarFields } = dto;
+    const { nivelesCarta, ...scalarFields } = cleanedDto as any;
 
     try {
       // 4️⃣ Update Scalar Fields (if any)
@@ -157,6 +175,12 @@ export class CartaService {
   // ✅ Delete scoped + affected
   async remove(id: number, user: JwtPayload) {
     try {
+      // 🔒 Logical Lock Check
+      const existing = await this.findOne(id, user);
+      if (existing.matchmaking) {
+        throw new ConflictException('No se puede eliminar esta carta porque está asociada a un matchmaking.');
+      }
+
       const result = await this.cartaRepo.delete({
         idCarta: id,
         usuario: { idUsuario: user.sub } as any,
@@ -165,7 +189,7 @@ export class CartaService {
       if (!result.affected) throw new NotFoundException('Carta no encontrada');
       return { message: 'Carta eliminada correctamente' };
     } catch (e) {
-      if (e instanceof NotFoundException) throw e;
+      if (e instanceof NotFoundException || e instanceof ConflictException) throw e;
       throw new InternalServerErrorException('Error al eliminar la carta');
     }
   }

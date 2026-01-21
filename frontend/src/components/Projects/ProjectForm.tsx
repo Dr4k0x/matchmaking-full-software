@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 import { type Project, type Technology, type NivelProyecto } from '../../types/index';
 import './Projects.css';
+import ErrorModal from '../Modals/ErrorModal';
 
 interface ProjectFormProps {
     initialData?: Project | null;
@@ -10,9 +11,10 @@ interface ProjectFormProps {
     onDelete: () => void;
     onManageTech: (currentData: Omit<Project, 'idProyecto'> & { idProyecto?: number }) => void;
     availableTechnologies: Technology[];
+    onError?: (title: string, message: string | string[]) => void;
 }
 
-const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel, onDelete, onManageTech, availableTechnologies }) => {
+const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel, onDelete, onManageTech, availableTechnologies, onError }) => {
     const [nombre, setNombre] = useState('');
     const [descripcion, setDescripcion] = useState('');
     const [fechaCreacion, setFechaCreacion] = useState('');
@@ -24,7 +26,11 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
     const [nivelVelocidadDesarrollo, setNivelVelocidadDesarrollo] = useState(1);
 
     const [nivelesProyecto, setNivelesProyecto] = useState<NivelProyecto[]>([]);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | string[] | null>(null);
+    const [errorTitle, setErrorTitle] = useState('Error');
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const isLocked = !!initialData?.matchmaking;
 
 
     const fechaCreacionRef = useRef<HTMLInputElement>(null);
@@ -82,33 +88,54 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
         setNivelesProyecto(prev => prev.filter(np => np.idTecnologia !== idTecnologia));
     };
 
+    const buildLockedPayload = () => ({ estado });
+
     const handleSubmit = async () => {
-        const payload = {
-            nombre,
-            descripcion,
-            fechaCreacion,
-            fechaFinalizacion,
-            estado,
-            nivelColaborativo,
-            nivelOrganizativo,
-            nivelVelocidadDesarrollo,
-            nivelesProyecto: nivelesProyecto.map(np => ({
-                idTecnologia: np.idTecnologia,
-                nivelRequerido: np.nivelRequerido
-            }))
-        };
+        if (isSubmitting) return;
+
+        let payload: any;
+        if (isLocked) {
+            payload = buildLockedPayload();
+        } else {
+            payload = {
+                nombre,
+                descripcion,
+                fechaCreacion: fechaCreacion || undefined,
+                fechaFinalizacion: fechaFinalizacion || undefined,
+                estado,
+                nivelColaborativo,
+                nivelOrganizativo,
+                nivelVelocidadDesarrollo,
+                nivelesProyecto: nivelesProyecto.map(np => ({
+                    idTecnologia: np.idTecnologia,
+                    nivelRequerido: np.nivelRequerido
+                }))
+            };
+        }
 
         if (import.meta.env.DEV) {
             console.log('ProjectForm Payload:', initialData ? 'UPDATE' : 'CREATE', payload);
         }
 
+        setIsSubmitting(true);
         try {
             await onSave(payload);
         } catch (err: any) {
             console.error('Error saving project:', err);
             const backendMessage = err.response?.data?.message;
-            const message = Array.isArray(backendMessage) ? backendMessage[0] : backendMessage;
-            setError(message || 'Ocurrió un error al guardar el proyecto. Por favor, verifica los datos.');
+            const message = backendMessage || 'Ocurrió un error al guardar el proyecto.';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
+
+            if (onError) {
+                // If parent handles errors, let it show the modal
+                onError(title, message);
+            } else {
+                // Fallback to local modal
+                setErrorTitle(title);
+                setError(message);
+            }
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -145,14 +172,23 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
         <div className="tech-form-container" onClick={e => e.stopPropagation()}>
             {/* Actions Header */}
             <div className="proj-actions">
-                {initialData && (
+                {isLocked && (
+                    <div className="proj-lock-notice" style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#e67e22', fontWeight: 800, fontSize: '0.8rem' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '16px', height: '16px' }}>
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        PROYECTO EN MATCHMAKING (LIMITADO)
+                    </div>
+                )}
+                {initialData && !isLocked && (
                     <button className="proj-btn proj-btn-delete" onClick={onDelete} title="Eliminar Proyecto" type="button">
                         ELIMINAR
                     </button>
                 )}
-                <button className="proj-btn proj-btn-cancel" onClick={handleClose} type="button">CANCELAR</button>
-                <button className="proj-btn proj-btn-save" onClick={handleSubmit} type="button">
-                    {initialData ? 'ACTUALIZAR PROYECTO' : 'GUARDAR PROYECTO'}
+                <button className="proj-btn proj-btn-cancel" onClick={handleClose} type="button" disabled={isSubmitting}>CANCELAR</button>
+                <button className="proj-btn proj-btn-save" onClick={handleSubmit} type="button" disabled={isSubmitting}>
+                    {isSubmitting ? 'GUARDANDO...' : (initialData ? 'ACTUALIZAR PROYECTO' : 'GUARDAR PROYECTO')}
                 </button>
             </div>
 
@@ -163,7 +199,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
 
                     <div className="proj-input-group">
                         <div className="proj-input-label">Nombre del Proyecto</div>
-                        <input type="text" className="proj-input" placeholder="Ej: Rediseño E-commerce" value={nombre} onChange={e => setNombre(e.target.value)} />
+                        <input type="text" className="proj-input" placeholder="Ej: Rediseño E-commerce" value={nombre} onChange={e => setNombre(e.target.value)} disabled={isLocked} />
                     </div>
 
                     <div className="proj-general-layout">
@@ -184,12 +220,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                                         className="proj-input" 
                                         value={fechaCreacion} 
                                         onChange={e => setFechaCreacion(e.target.value)} 
+                                        disabled={isLocked}
                                     />
                                     <button 
                                         type="button" 
                                         className="proj-calendar-btn"
                                         onClick={() => openCalendar(fechaCreacionRef)}
                                         aria-label="Abrir calendario de fecha inicio"
+                                        disabled={isLocked}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -209,12 +247,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                                         className="proj-input" 
                                         value={fechaFinalizacion} 
                                         onChange={e => setFechaFinalizacion(e.target.value)} 
+                                        disabled={isLocked}
                                     />
                                     <button 
                                         type="button" 
                                         className="proj-calendar-btn"
                                         onClick={() => openCalendar(fechaFinalizacionRef)}
                                         aria-label="Abrir calendario de fecha fin"
+                                        disabled={isLocked}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
@@ -243,6 +283,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         placeholder="Describe el objetivo y alcance del proyecto..."
                         value={descripcion}
                         onChange={e => setDescripcion(e.target.value)}
+                        disabled={isLocked}
                     />
                 </div>
 
@@ -253,27 +294,27 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                     <div className="proj-stepper-container">
                         <div className="proj-stepper-label">COLABORACIÓN</div>
                         <div className="proj-stepper-controls">
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, -1)} type="button" disabled={nivelColaborativo <= 1}>-</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, -1)} type="button" disabled={isLocked || nivelColaborativo <= 1}>-</button>
                             <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelColaborativo}</span>
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, 1)} type="button" disabled={nivelColaborativo >= 10}>+</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, 1)} type="button" disabled={isLocked || nivelColaborativo >= 10}>+</button>
                         </div>
                     </div>
 
                     <div className="proj-stepper-container">
                         <div className="proj-stepper-label">ORGANIZACIÓN</div>
                         <div className="proj-stepper-controls">
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, -1)} type="button" disabled={nivelOrganizativo <= 1}>-</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, -1)} type="button" disabled={isLocked || nivelOrganizativo <= 1}>-</button>
                             <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelOrganizativo}</span>
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, 1)} type="button" disabled={nivelOrganizativo >= 10}>+</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, 1)} type="button" disabled={isLocked || nivelOrganizativo >= 10}>+</button>
                         </div>
                     </div>
 
                     <div className="proj-stepper-container">
                         <div className="proj-stepper-label">VELOCIDAD DEV</div>
                         <div className="proj-stepper-controls">
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, -1)} type="button" disabled={nivelVelocidadDesarrollo <= 1}>-</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, -1)} type="button" disabled={isLocked || nivelVelocidadDesarrollo <= 1}>-</button>
                             <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelVelocidadDesarrollo}</span>
-                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, 1)} type="button" disabled={nivelVelocidadDesarrollo >= 10}>+</button>
+                            <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, 1)} type="button" disabled={isLocked || nivelVelocidadDesarrollo >= 10}>+</button>
                         </div>
                     </div>
                 </div>
@@ -293,7 +334,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                             nivelVelocidadDesarrollo,
                             nivelesProyecto,
                             idProyecto: initialData?.idProyecto
-                        })} type="button" title="Gestionar Tecnologías">+</button>
+                        })} type="button" title="Gestionar Tecnologías" disabled={isLocked}>+</button>
                     </div>
 
                     <div className="proj-tech-list-scroll">
@@ -302,12 +343,12 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                                 <div className="proj-tech-item-name">{getTechName(np.idTecnologia)}</div>
                                 
                                 <div className="proj-stepper-controls-mini">
-                                    <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, -1)} type="button" disabled={np.nivelRequerido <= 1}>-</button>
+                                    <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, -1)} type="button" disabled={isLocked || np.nivelRequerido <= 1}>-</button>
                                     <span style={{fontWeight: 800, fontSize: '0.9rem', minWidth: '20px', textAlign: 'center'}}>{np.nivelRequerido}</span>
-                                    <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, 1)} type="button" disabled={np.nivelRequerido >= 10}>+</button>
+                                    <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, 1)} type="button" disabled={isLocked || np.nivelRequerido >= 10}>+</button>
                                 </div>
 
-                                <button className="proj-skill-delete-btn" onClick={() => handleRemoveTech(np.idTecnologia)} type="button" title="Quitar tecnología">
+                                <button className="proj-skill-delete-btn" onClick={() => handleRemoveTech(np.idTecnologia)} type="button" title="Quitar tecnología" disabled={isLocked}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <polyline points="3 6 5 6 21 6"></polyline>
                                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -326,22 +367,12 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
             </div>
 
             {/* Error Modal */}
-            {error && (
-                <div className="proj-error-overlay" onClick={() => setError(null)}>
-                    <div className="proj-error-card" onClick={e => e.stopPropagation()}>
-                        <div className="proj-error-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="8" x2="12" y2="12"></line>
-                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                            </svg>
-                        </div>
-                        <h3 className="proj-error-title">Fechas Inválidas</h3>
-                        <p className="proj-error-text">{error}</p>
-                        <button className="proj-error-btn" type="button" onClick={() => setError(null)}>ENTENDIDO</button>
-                    </div>
-                </div>
-            )}
+            <ErrorModal 
+                isOpen={!!error}
+                title={errorTitle}
+                message={error || ''}
+                onClose={() => setError(null)}
+            />
         </div>
     );
 };

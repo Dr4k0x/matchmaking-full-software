@@ -19,6 +19,7 @@ export interface Employee {
   sabiduria: number;
   velocidad: number;
   nivelesCarta: NivelCarta[];
+  matchmaking?: any;
 }
 
 export interface NivelProyecto {
@@ -38,6 +39,7 @@ export interface Project {
   nivelOrganizativo: number;
   nivelVelocidadDesarrollo: number;
   nivelesProyecto: NivelProyecto[];
+  matchmaking?: any;
 }
 
 export interface Match {

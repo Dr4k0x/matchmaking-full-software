@@ -6,6 +6,7 @@ import EmployeeForm from './EmployeeForm';
 import './Employees.css';
 import cartaService from '../../services/carta.service';
 import techService from '../../services/tech.service';
+import ErrorModal from '../Modals/ErrorModal';
 
 const EmployeesPage: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -15,6 +16,8 @@ const EmployeesPage: React.FC = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [conflictError, setConflictError] = useState<string | string[] | null>(null);
+    const [conflictTitle, setConflictTitle] = useState('ACCIÓN NO PERMITIDA');
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -149,7 +152,15 @@ const EmployeesPage: React.FC = () => {
             clearFormDrafts();
             handleCancel();
         } catch (err: any) {
-            alert('Error al guardar empleado');
+            console.error('EmployeesPage handleSave error:', err);
+            const backendMessage = err.response?.data?.message || 'Error al guardar el empleado';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
+            
+            setConflictTitle(title);
+            setConflictError(backendMessage);
+            
+            // Re-throw so the form can finish its isSubmitting: false and handle fallback if needed
+            throw err;
         }
     };
 
@@ -160,7 +171,14 @@ const EmployeesPage: React.FC = () => {
             setEmployees(prev => prev.filter(e => e.idCarta !== selectedId));
             handleCancel();
         } catch (err: any) {
-            alert('Error al eliminar empleado');
+            console.error('EmployeesPage handleDelete error:', err);
+            const backendMessage = err.response?.data?.message || 'Error al eliminar el empleado';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL ELIMINAR';
+            
+            setConflictTitle(title);
+            setConflictError(backendMessage);
+            
+            throw err; // For form cleanup
         }
     };
 
@@ -196,10 +214,21 @@ const EmployeesPage: React.FC = () => {
                             onCancel={handleCancel}
                             onDelete={handleDelete}
                             availableTechnologies={availableTechnologies}
+                            onError={(title, msg) => {
+                                setConflictTitle(title);
+                                setConflictError(msg);
+                            }}
                         />
                     </div>
                 </div>
             )}
+
+            <ErrorModal 
+                isOpen={!!conflictError}
+                title={conflictTitle}
+                message={conflictError || ''}
+                onClose={() => setConflictError(null)}
+            />
         </div>
     );
 };

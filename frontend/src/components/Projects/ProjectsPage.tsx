@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ProjectGrid from './ProjectGrid';
 import ProjectForm from './ProjectForm';
+import ProjectStatusForm from './ProjectStatusForm';
 import { type Project, type Technology, type NivelProyecto } from '../../types/index';
 import './Projects.css';
 import proyectoService from '../../services/proyecto.service';
 import techService from '../../services/tech.service';
+import ErrorModal from '../Modals/ErrorModal';
 
 
 interface NavigationState {
@@ -25,6 +27,8 @@ const ProjectsPage: React.FC = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [conflictError, setConflictError] = useState<string | string[] | null>(null);
+    const [conflictTitle, setConflictTitle] = useState('ACCIÓN NO PERMITIDA');
 
     const navigate = useNavigate();
     const location = useLocation();
@@ -209,10 +213,33 @@ const ProjectsPage: React.FC = () => {
             handleCancel();
         } catch (err: any) {
             console.error('ProjectsPage handleSave error:', err);
-            throw err; // Propagate to let ProjectForm show the error modal
+            const backendMessage = err.response?.data?.message || 'Error al guardar el proyecto';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
+            
+            setConflictTitle(title);
+            setConflictError(backendMessage);
+            
+            // Re-throw if and only if we want the local form NOT to clear isSubmitting or handle its own fallback
+            // But since we want the form to handle isSubmitting (finally block), we re-throw.
+            throw err; 
         }
     };
 
+    const handleStatusSave = async (id: number, estado: 'P' | 'F' | 'E') => {
+        try {
+            const updated = await proyectoService.updateEstado(id, estado);
+            setProjects(prev => prev.map(p => p.idProyecto === id ? updated : p));
+            handleCancel();
+        } catch (err: any) {
+            console.error('ProjectsPage handleStatusSave error:', err);
+            const backendMessage = err.response?.data?.message || 'Error al actualizar el estado';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL ACTUALIZAR';
+            
+            setConflictTitle(title);
+            setConflictError(backendMessage);
+            throw err;
+        }
+    };
 
     const handleDelete = async () => {
         if (!selectedProject?.idProyecto) return;
@@ -223,7 +250,12 @@ const ProjectsPage: React.FC = () => {
             setProjects(prev => prev.filter(p => p.idProyecto !== selectedProject.idProyecto));
             handleCancel();
         } catch (err: any) {
-            alert('Error al eliminar proyecto');
+            console.error('ProjectsPage handleDelete error:', err);
+            const backendMessage = err.response?.data?.message || 'Error al eliminar el proyecto';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL ELIMINAR';
+            
+            setConflictTitle(title);
+            setConflictError(backendMessage);
         }
     };
 
@@ -252,16 +284,39 @@ const ProjectsPage: React.FC = () => {
 
             {showModal && (
                 <div className="modal-overlay" onClick={handleCancel}>
-                    <ProjectForm
-                        initialData={selectedProject}
-                        onSave={handleSave}
-                        onCancel={handleCancel}
-                        onDelete={handleDelete}
-                        onManageTech={handleManageTech}
-                        availableTechnologies={availableTechnologies}
-                    />
+                    {!isCreating && selectedProject?.matchmaking ? (
+                        <ProjectStatusForm
+                            initialData={selectedProject}
+                            onSave={handleStatusSave}
+                            onCancel={handleCancel}
+                            onError={(title, msg) => {
+                                setConflictTitle(title);
+                                setConflictError(msg);
+                            }}
+                        />
+                    ) : (
+                        <ProjectForm
+                            initialData={selectedProject}
+                            onSave={handleSave}
+                            onCancel={handleCancel}
+                            onDelete={handleDelete}
+                            onManageTech={handleManageTech}
+                            availableTechnologies={availableTechnologies}
+                            onError={(title, msg) => {
+                                setConflictTitle(title);
+                                setConflictError(msg);
+                            }}
+                        />
+                    )}
                 </div>
             )}
+
+            <ErrorModal 
+                isOpen={!!conflictError}
+                title={conflictTitle}
+                message={conflictError || ''}
+                onClose={() => setConflictError(null)}
+            />
         </div>
     );
 };

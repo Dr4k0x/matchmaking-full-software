@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
@@ -16,6 +17,7 @@ import { NivelProyectoService } from 'src/nivel-proyecto/nivel-proyecto.service'
 import { TransactionService } from 'src/common/transaction.service';
 import { Tecnologia } from '../tecnologia/entities/tecnologia.entity';
 import { NivelProyecto } from '../nivel-proyecto/entities/nivel-proyecto.entity';
+import { UpdateEstadoProyectoDto } from './dto/update-estado-proyecto.dto';
 
 @Injectable()
 export class ProyectoService {
@@ -206,20 +208,55 @@ export class ProyectoService {
     return proyecto;
   }
 
+  private cleanUpdateDto(dto: UpdateProyectoDto): Partial<UpdateProyectoDto> {
+    const cleaned = {};
+    Object.keys(dto).forEach(key => {
+      const val = dto[key];
+      if (val !== undefined && val !== null) {
+        // Ignore empty strings
+        if (typeof val === 'string' && val.trim() === '') return;
+        // Ignore empty arrays
+        if (Array.isArray(val) && val.length === 0) return;
+        
+        cleaned[key] = val;
+      }
+    });
+    return cleaned;
+  }
+
   async update(id: number, updateProyectoDto: UpdateProyectoDto, user: JwtPayload) {
     try {
+      const cleanedDto = this.cleanUpdateDto(updateProyectoDto);
+      
       return await this.transactionService.runInTransaction(async (manager: EntityManager) => {
         // 1. Confirm ownership and existence
         const proyecto = await manager.getRepository(Proyecto).findOne({
-          where: { idProyecto: id, idUsuario: user.sub }
+          where: { idProyecto: id, idUsuario: user.sub },
+          relations: ['matchmaking']
         });
 
         if (!proyecto) {
           throw new NotFoundException(`Proyecto con id ${id} no encontrado o no pertenece al usuario`);
         }
 
+        // 🔒 Logical Lock Check
+        if (proyecto.matchmaking) {
+          const dtoKeys = Object.keys(cleanedDto);
+          
+          if (dtoKeys.length === 0) {
+            throw new BadRequestException('No hay cambios válidos para aplicar.');
+          }
+
+          // Allow ONLY if exactly 1 key and it is 'estado'
+          const isValidStatusUpdate = dtoKeys.length === 1 && dtoKeys[0] === 'estado';
+          
+          if (!isValidStatusUpdate) {
+            throw new ConflictException('Este proyecto está asociado a un matchmaking. Solo se permite actualizar su estado.');
+          }
+        }
+
         // 2. Separate logic: Base fields vs Levels
-        const { nivelesProyecto, ...fieldsToUpdate } = updateProyectoDto;
+        const { nivelesProyecto, ...fieldsToUpdate } = cleanedDto as UpdateProyectoDto;
 
         // Ensure we work with strings and avoid new Date()
         const fechaInicio = fieldsToUpdate.fechaCreacion || (typeof proyecto.fechaCreacion === 'object' && proyecto.fechaCreacion ? (proyecto.fechaCreacion as any).toISOString().split('T')[0] : proyecto.fechaCreacion);
@@ -272,25 +309,47 @@ export class ProyectoService {
         });
       });
     } catch (e) {
-      if (e instanceof NotFoundException) throw e;
+      if (e instanceof NotFoundException || e instanceof ConflictException || e instanceof BadRequestException) throw e;
       throw new InternalServerErrorException('Error al actualizar el proyecto: ' + e.message);
     }
   }
 
+  async updateEstado(id: number, updateEstadoDto: UpdateEstadoProyectoDto, user: JwtPayload) {
+    const proyecto = await this.proyectoRepository.findOne({
+      where: { idProyecto: id, idUsuario: user.sub }
+    });
+
+    if (!proyecto) {
+      throw new NotFoundException(`Proyecto con ID ${id} no encontrado o no le pertenece.`);
+    }
+
+    proyecto.estado = updateEstadoDto.estado;
+    await this.proyectoRepository.save(proyecto);
+
+    return this.findOne(id, user);
+  }
+
   async remove(id: number, user: JwtPayload) {
     try {
-      const result = await this.proyectoRepository.delete({
-        idProyecto: id,
-        idUsuario: user.sub,
+      const proyecto = await this.proyectoRepository.findOne({
+        where: { idProyecto: id, idUsuario: user.sub },
+        relations: ['matchmaking']
       });
 
-      if (result.affected === 0) {
+      if (!proyecto) {
         throw new NotFoundException(`Proyecto con id ${id} no encontrado`);
       }
 
+      // 🔒 Logical Lock Check
+      if (proyecto.matchmaking) {
+        throw new ConflictException('No se puede eliminar el proyecto porque está siendo utilizado en un matchmaking.');
+      }
+
+      await this.proyectoRepository.delete(id);
+
       return { message: 'Proyecto eliminado correctamente' };
     } catch (e) {
-      if (e instanceof NotFoundException) throw e;
+      if (e instanceof NotFoundException || e instanceof ConflictException) throw e;
       throw new InternalServerErrorException('Error al eliminar el proyecto');
     }
   }
