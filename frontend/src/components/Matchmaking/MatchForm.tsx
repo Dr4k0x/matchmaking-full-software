@@ -1,267 +1,461 @@
 import React, { useState, useEffect } from 'react';
-import type { Match } from '../../types';
-import type { Project } from '../../types'; // Import NivelProyecto if needed, or just rely on Project
-import type { Employee } from '../../types';
-import type { Technology } from '../../types';
+import type { Project, Employee, Technology } from '../../types';
 import './Matchmaking.css';
 import matchmakingService from '../../services/matchmaking.service';
+import { getProjectStatusLabel, getProjectStatusBadgeClass } from './utils';
 
 interface MatchFormProps {
-    initialData?: Match | null;
     projects: Project[];
     employees: Employee[];
     technologies: Technology[];
-    onSave: (match: Omit<Match, 'id'>) => void;
+    onSave: () => void;
     onCancel: () => void;
 }
 
-// Helper to find tech name by ID
-const getTechName = (id: number, techs: Technology[]) => {
-    return techs.find(t => t.idTecnologia === id)?.nombre || 'Unknown';
+// Helper: Show Name Only (Level is handled at call site)
+const getTechDisplay = (id: number, techs: Technology[]) => {
+    const tech = techs.find(t => t.idTecnologia === id);
+    return tech ? `${tech.nombre}` : 'Unknown';
 };
 
-const MatchForm: React.FC<MatchFormProps> = ({ initialData, projects, employees, technologies, onSave, onCancel }) => {
-    // State
-    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [team, setTeam] = useState<any[]>(Array(5).fill(null)); // Initialize with 5 nulls
-    const [score, setScore] = useState<number>(0);
-    const [loading, setLoading] = useState(false);
+/* --- SUB-COMPONENTS --- */
 
-    // Modal State
-    const [showProjectModal, setShowProjectModal] = useState(false);
-    const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-    const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
+const ProjectPanelCompact = ({ project, technologies, onSelect }: { project: Project | null, technologies: Technology[], onSelect: () => void }) => {
+    if (!project) {
+        return (
+            <div className="project-panel-compact" onClick={onSelect} style={{ justifyContent: 'center', borderStyle: 'dashed' }}>
+                <span style={{ fontWeight: 700, color: '#94a3b8' }}>+ SELECCIONAR PROYECTO</span>
+            </div>
+        );
+    }
+    return (
+        <div className="project-panel-compact" onClick={onSelect} title="Cambiar Proyecto">
+            <div className="proj-info-main">
+                <div className="proj-name">{project.nombre}</div>
+                <div className="proj-dates">
+                    <span>{project.fechaCreacion.substring(0, 10)} → {project.fechaFinalizacion}</span>
+                </div>
+                <div style={{marginBottom: '0.5rem'}}>
+                    <span style={{
+                        fontSize: '0.75rem', fontWeight: 700, 
+                        color: getProjectStatusBadgeClass(project.estado),
+                        border: `1px solid ${getProjectStatusBadgeClass(project.estado)}`,
+                        padding: '2px 8px', borderRadius: '12px'
+                    }}>
+                        {getProjectStatusLabel(project.estado).toUpperCase()}
+                    </span>
+                </div>
+                <div className="proj-requirements">
+                    <span className="req-badge req-colab">COLABORACIÓN Lv {project.nivelColaborativo}</span>
+                    <span className="req-badge req-sab">SABIDURÍA Lv {project.nivelOrganizativo}</span>
+                    <span className="req-badge req-speed">VELOCIDAD Lv {project.nivelVelocidadDesarrollo}</span>
+                    
+                    <div className="tech-badges-list">
+                        {project.nivelesProyecto?.slice(0, 3).map(np => (
+                            <span key={np.idTecnologia} className="tech-badge-mini">
+                                {getTechDisplay(np.idTecnologia, technologies)} · Lv {np.nivelRequerido}
+                            </span>
+                        ))}
+                        {(project.nivelesProyecto?.length || 0) > 3 && <span className="tech-badge-mini">...</span>}
+                    </div>
+                </div>
+            </div>
+            <div style={{ marginLeft: '1rem', color: '#cbd5e1' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </div>
+        </div>
+    );
+};
 
-    useEffect(() => {
-        if (initialData) {
-            const proj = projects.find(p => p.idProyecto === initialData.idProyecto) || null;
-            setSelectedProject(proj);
+const YuGiOhCard = ({ employee, technologies, onRemove }: { employee: Employee, technologies: Technology[], onRemove: () => void }) => {
+    const [techIdx, setTechIdx] = useState(0);
+    const techList = employee.nivelesCarta || [];
+    const hasTechs = techList.length > 0;
 
-            const newTeam = Array(5).fill(null);
-            initialData.cartasIds.forEach((id, index) => {
-                const emp = employees.find(e => e.idCarta === id);
-                if (emp && index < 5) newTeam[index] = emp;
-            });
-            setTeam(newTeam);
-
-            setScore(initialData.score);
-        } else {
-            setSelectedProject(null);
-            setTeam(Array(5).fill(null));
-            setScore(0);
-        }
-    }, [initialData, projects, employees]);
-
-    const handleRandomScore = () => {
-        const randomScore = Math.floor(Math.random() * 101);
-        setScore(randomScore);
+    const nextTech = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (hasTechs) setTechIdx((prev) => (prev + 1) % techList.length);
     };
 
-    const handleMatchTeam = async () => {
-        if (!selectedProject) return alert('Seleccione un proyecto primero');
+    const prevTech = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (hasTechs) setTechIdx((prev) => (prev - 1 + techList.length) % techList.length);
+    };
+
+    const currentTech = hasTechs ? techList[techIdx] : null;
+
+    return (
+        <div className="yugioh-card">
+            <button className="remove-card-btn" onClick={onRemove} title="Remover carta">×</button>
+            <div className="card-inner">
+                <div className="card-name-header" title={employee.nombreApellido}>
+                    {employee.nombreApellido}
+                </div>
+                <div className="card-portrait">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    <div className="card-type-strip">{employee.tipoCarta}</div>
+                </div>
+                <div className="card-details">
+                    <div className="card-stats-row">
+                        <span>COL Lv {employee.poderSocial}</span>
+                        <span>SAB Lv {employee.sabiduria}</span>
+                        <span>VEL Lv {employee.velocidad}</span>
+                    </div>
+                    <div className="card-tech-carousel">
+                        {hasTechs && techList.length > 1 && <button className="carousel-btn" onClick={prevTech}>‹</button>}
+                        
+                        <div className="tech-text">
+                            {currentTech ? (
+                                <span>
+                                    {getTechDisplay(currentTech.idTecnologia, technologies)} · Lv {currentTech.nivelDominado}
+                                </span>
+                            ) : (
+                                <span style={{color: '#94a3b8', fontStyle: 'italic'}}>Sin Techs</span>
+                            )}
+                        </div>
+
+                        {hasTechs && techList.length > 1 && <button className="carousel-btn" onClick={nextTech}>›</button>}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* --- MODAL COMPONENTS --- */
+
+const ProjectPickerModal = ({ 
+    isOpen, 
+    projects, 
+    onClose, 
+    onConfirm 
+}: { 
+    isOpen: boolean, 
+    projects: Project[], 
+    onClose: () => void, 
+    onConfirm: (p: Project) => void 
+}) => {
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+
+    if (!isOpen) return null;
+
+    const handleConfirm = () => {
+        const proj = projects.find(p => p.idProyecto === selectedId);
+        if (proj) onConfirm(proj);
+    };
+
+    return (
+        <div className="picker-modal-overlay" onClick={onClose}>
+            <div className="picker-modal" onClick={e => e.stopPropagation()}>
+                <div className="picker-header">
+                    <div>
+                        <h3 className="picker-title">SELECCIONAR PROYECTO</h3>
+                        <div className="picker-subtitle">Elige el proyecto para el matchmaking</div>
+                    </div>
+                    <button className="btn-close" onClick={onClose} style={{padding: '0.4rem', border:'none'}}>✕</button>
+                </div>
+                <div className="picker-body">
+                    <div className="picker-grid">
+                        {projects.map(p => (
+                            <div 
+                                key={p.idProyecto} 
+                                className={`picker-item ${selectedId === p.idProyecto ? 'selected' : ''}`}
+                                onClick={() => setSelectedId(p.idProyecto)}
+                            >
+                                <div className="picker-item-name">{p.nombre}</div>
+                                <div className="picker-item-info">
+                                    {p.fechaCreacion.substring(0, 10)}
+                                    <br/>
+                                    <strong>{getProjectStatusLabel(p.estado)}</strong>
+                                </div>
+                                {/* Visual Checkmark for Selected */}
+                                {selectedId === p.idProyecto && (
+                                    <div style={{
+                                        position:'absolute', top:'-8px', right:'-8px', 
+                                        background:'var(--mm-navy)', color:'var(--mm-yellow)',
+                                        borderRadius:'50%', width:'24px', height:'24px', 
+                                        display:'flex', alignItems:'center', justifyContent:'center',
+                                        fontWeight:'bold', border:'2px solid white'
+                                    }}>✓</div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="picker-footer">
+                    <button className="picker-btn-cancel" onClick={onClose}>CANCELAR</button>
+                    <button className="picker-btn-confirm" disabled={!selectedId} onClick={handleConfirm}>CONFIRMAR</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const EmployeeMultiPickerModal = ({
+    isOpen,
+    employees,
+    currentTeamIds,
+    onClose,
+    onConfirm
+}: {
+    isOpen: boolean,
+    employees: Employee[],
+    currentTeamIds: number[],
+    onClose: () => void,
+    onConfirm: (newEmployees: Employee[]) => void
+}) => {
+    // Local state for selection
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+    useEffect(() => {
+        if (isOpen) setSelectedIds([]); // Reset on open
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const toggleSelection = (id: number) => {
+        if (selectedIds.includes(id)) {
+            setSelectedIds(selectedIds.filter(sid => sid !== id));
+        } else {
+            // Limit total selection (Current Team + New Selection <= 5)
+            if (currentTeamIds.length + selectedIds.length < 5) {
+                setSelectedIds([...selectedIds, id]);
+            }
+        }
+    };
+
+    const handleConfirm = () => {
+        const newEmps = employees.filter(e => selectedIds.includes(e.idCarta));
+        onConfirm(newEmps);
+    };
+
+    const slotsRemaining = 5 - currentTeamIds.length;
+
+    return (
+        <div className="picker-modal-overlay" onClick={onClose}>
+            <div className="picker-modal" onClick={e => e.stopPropagation()}>
+                <div className="picker-header">
+                    <div>
+                        <h3 className="picker-title">AÑADIR CARTAS</h3>
+                        <div className="picker-subtitle">
+                            Seleccionados: {selectedIds.length} / {slotsRemaining} disponibles
+                        </div>
+                    </div>
+                    <button className="btn-close" onClick={onClose} style={{padding: '0.4rem', border:'none'}}>✕</button>
+                </div>
+                <div className="picker-body">
+                    <div className="picker-grid">
+                        {employees.map(e => {
+                            const isAlreadyInTeam = currentTeamIds.includes(e.idCarta);
+                            const isSelected = selectedIds.includes(e.idCarta);
+                            
+                            return (
+                                <div 
+                                    key={e.idCarta} 
+                                    className={`picker-item ${isSelected ? 'selected' : ''} ${isAlreadyInTeam ? 'disabled' : ''}`}
+                                    onClick={() => !isAlreadyInTeam && toggleSelection(e.idCarta)}
+                                >
+                                    <div className="picker-item-name">{e.nombreApellido}</div>
+                                    <div className="picker-item-info">
+                                        {e.tipoCarta} · COL {e.poderSocial}
+                                        {isAlreadyInTeam && <div style={{color:'#ef4444', fontWeight:'bold', marginTop:'4px'}}>En equipo</div>}
+                                    </div>
+                                    
+                                    {/* Visual Checkmark for Selected */}
+                                    {isSelected && (
+                                        <div style={{
+                                            position:'absolute', top:'-8px', right:'-8px', 
+                                            background:'var(--mm-navy)', color:'var(--mm-yellow)',
+                                            borderRadius:'50%', width:'24px', height:'24px', 
+                                            display:'flex', alignItems:'center', justifyContent:'center',
+                                            fontWeight:'bold', border:'2px solid white'
+                                        }}>✓</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+                <div className="picker-footer">
+                    <button className="picker-btn-cancel" onClick={onClose}>CANCELAR</button>
+                    <button className="picker-btn-confirm" disabled={selectedIds.length === 0} onClick={handleConfirm}>
+                        CONFIRMAR SELECCIÓN
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+/* --- MAIN FORM --- */
+
+const MatchForm: React.FC<MatchFormProps> = ({ projects, employees, technologies, onSave, onCancel }) => {
+    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [team, setTeam] = useState<Employee[]>([]);
+    const [score, setScore] = useState<number>(0);
+
+    const [loading, setLoading] = useState(false);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const [showProjectModal, setShowProjectModal] = useState(false);
+    const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+
+    const selectedCardsIds = team.map(e => e.idCarta);
+    const isValidSelection = selectedProject !== null && selectedCardsIds.length >= 2 && selectedCardsIds.length <= 5;
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchPreview = async () => {
+            if (!selectedProject || selectedCardsIds.length < 2) {
+                setScore(0);
+                return;
+            }
+            setPreviewLoading(true);
+            try {
+                const result = await matchmakingService.preview({
+                    idProyecto: selectedProject.idProyecto,
+                    cartasIds: selectedCardsIds
+                });
+                if (isMounted) setScore(result.porcentaje);
+            } catch {
+                if(isMounted) setScore(0);
+            } finally {
+                if (isMounted) setPreviewLoading(false);
+            }
+        };
+        const timeoutId = setTimeout(fetchPreview, 500);
+        return () => { isMounted = false; clearTimeout(timeoutId); };
+    }, [selectedProject, selectedCardsIds.length, JSON.stringify(selectedCardsIds)]);
+
+    const handleSaveClick = async () => {
+        if (!isValidSelection || !selectedProject) return;
         setLoading(true);
+        setError(null);
         try {
-            // Note: Update backend service to accept idProyecto naming if needed, 
-            // but DTOs usually map properties. 
-            // Checking createRandom DTO might be needed, assuming it expects idProyecto.
-            const result = await matchmakingService.createRandom({
+            await matchmakingService.create({
                 idProyecto: selectedProject.idProyecto,
-                maxCards: 5,
-                threshold: 80
+                cartasIds: selectedCardsIds
             });
-
-            // Map result IDs back to employee objects
-            // Assuming result holds employeeIds (or cartasIds)
-            const resultIds = result.cartasIds || result.employeeIds || [];
-
-            const newTeam = Array(5).fill(null);
-            resultIds.forEach((id: number, idx: number) => {
-                const emp = employees.find(e => e.idCarta === id);
-                if (emp) newTeam[idx] = emp;
-            });
-            setTeam(newTeam);
-            setScore(result.score);
-        } catch (err) {
-            alert('Error al generar equipo aleatorio');
+            onSave();
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Error al crear matchmaking');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleSaveClick = () => {
-        const matchData = {
-            idProyecto: selectedProject?.idProyecto || 0,
-            cartasIds: team.filter(e => e !== null).map(e => e.idCarta),
-            score
-        };
-        onSave(matchData);
-    };
-
-    // Project Selection Handlers
-    const openProjectModal = () => setShowProjectModal(true);
-    const selectProject = (proj: Project) => {
-        setSelectedProject(proj);
+    // Modal Handlers
+    const handleProjectConfirm = (p: Project) => {
+        setSelectedProject(p);
         setShowProjectModal(false);
     };
 
-    // Employee Selection Handlers
-    const openEmployeeModal = (index: number) => {
-        setActiveSlotIndex(index);
-        setShowEmployeeModal(true);
+    const handleEmployeesConfirm = (newEmps: Employee[]) => {
+        // Add new employees to existing team
+        setTeam([...team, ...newEmps]);
+        setShowEmployeeModal(false);
     };
-    const selectEmployee = (emp: any) => {
-        if (activeSlotIndex !== null) {
-            const newTeam = [...team];
-            newTeam[activeSlotIndex] = emp;
-            setTeam(newTeam);
-            setShowEmployeeModal(false);
-            setActiveSlotIndex(null);
-        }
-    };
+
+    // Render 5 fixed slots
+    const slots = Array(5).fill(null); 
 
     return (
         <div className="match-overlay">
-            <div className="match-panel">
-                {/* Left: Data */}
-                <div className="match-panel-left">
-                    {/* Top: Project */}
-                    <div className="match-project-section centered-section">
-                        {selectedProject ? (
-                            <div className="match-project-card" onClick={openProjectModal}>
-                                <div className="match-proj-img">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '60%', height: '60%' }}>
-                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                        <line x1="3" y1="9" x2="21" y2="9"></line>
-                                        <line x1="9" y1="21" x2="9" y2="9"></line>
-                                    </svg>
-                                </div>
-                                <div className="match-proj-details">
-                                    <div className="match-proj-name">{selectedProject.nombre}</div>
-                                    <div className="match-stat-display">
-                                        <div className="match-stat-item">
-                                            <span className="match-stat-label">COLAB</span>
-                                            <span className="match-stat-value">{selectedProject.nivelColaborativo}</span>
-                                        </div>
-                                        <div className="match-stat-item">
-                                            <span className="match-stat-label">ORG</span>
-                                            <span className="match-stat-value">{selectedProject.nivelOrganizativo}</span>
-                                        </div>
-                                        <div className="match-stat-item">
-                                            <span className="match-stat-label">SPEED</span>
-                                            <span className="match-stat-value">{selectedProject.nivelVelocidadDesarrollo}</span>
-                                        </div>
-                                    </div>
-                                    <div className="match-skills-title">HABILIDADES</div>
-                                    <div className="match-tech-list">
-                                        {selectedProject.nivelesProyecto && selectedProject.nivelesProyecto.map(np => {
-                                            const techName = getTechName(np.idTecnologia, technologies);
-                                            return (
-                                                <div key={np.idTecnologia} className="match-tech-icon" title={`${techName} (Lv ${np.nivelRequerido})`}>
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '100%', height: '100%' }}>
-                                                        <polyline points="16 18 22 12 16 6"></polyline>
-                                                        <polyline points="8 6 2 12 8 18"></polyline>
-                                                    </svg>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="match-slot large-slot" onClick={openProjectModal}>
-                                ?
-                                <div className="match-slot-label">SELECCIONAR PROYECTO</div>
-                            </div>
-                        )}
-                    </div>
+            <div className="match-board-container">
+                {/* Left Column: Project + Board */}
+                <div className="board-left-column">
+                    {error && (
+                        <div style={{background: '#ef4444', color: 'white', padding: '0.5rem', borderRadius: 4, marginBottom: '1rem', textAlign: 'center', cursor: 'pointer'}} onClick={()=>setError(null)}>
+                            {error} <small>(click to dismiss)</small>
+                        </div>
+                    )}
 
-                    {/* Bottom: Team */}
-                    <div className="match-team-section">
-                        <div className="match-team-title">EQUIPO SELECCIONADO</div>
-                        <div className="match-team-slots">
-                            {team.map((member, index) => (
-                                <div key={index} className="match-slot-wrapper" onClick={() => openEmployeeModal(index)}>
-                                    {member ? (
-                                        <div className="match-mini-card clickable">
-                                            <div className="match-mini-img">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '50%', height: '50%' }}>
-                                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                                                    <circle cx="12" cy="7" r="4"></circle>
-                                                </svg>
-                                            </div>
-                                            <div className="match-mini-info">
-                                                <div className="match-mini-name">{member.nombreApellido}</div>
-                                                <div className="match-mini-role">{member.tipoCarta}</div>
-                                            </div>
+                    <ProjectPanelCompact 
+                        project={selectedProject} 
+                        technologies={technologies} 
+                        onSelect={() => setShowProjectModal(true)} 
+                    />
+
+                    <div className="team-board-area">
+                        <div className="cards-row">
+                            {slots.map((_, index) => {
+                                const member = team[index];
+                                if (member) {
+                                    return (
+                                        <YuGiOhCard 
+                                            key={member.idCarta} 
+                                            employee={member} 
+                                            technologies={technologies} 
+                                            onRemove={() => setTeam(team.filter(t => t.idCarta !== member.idCarta))}
+                                        />
+                                    );
+                                } else {
+                                    return (
+                                        <div 
+                                            key={`empty-${index}`} 
+                                            className="empty-slot-card"
+                                            onClick={() => setShowEmployeeModal(true)}
+                                            style={{ visibility: team.length >= 5 ? 'hidden' : 'visible' }}
+                                        >
+                                            +
                                         </div>
-                                    ) : (
-                                        <div className="match-slot clickable">?</div>
-                                    )}
-                                </div>
-                            ))}
+                                    );
+                                }
+                            })}
                         </div>
                     </div>
                 </div>
 
-                {/* Right: Actions & Score */}
-                <div className="match-panel-right">
-                    <button className="match-btn-random" onClick={handleRandomScore}>RANDOM</button>
-                    <div className="match-score-circle">{score}%</div>
-                    <button className="match-btn-match" onClick={handleMatchTeam} disabled={loading}>
-                        {loading ? '...' : 'MATCH'}
-                    </button>
+                {/* Right Column: Status */}
+                <div className="board-right-column">
+                    <div className="status-content">
+                        <h3 style={{margin:0, color: '#94a3b8'}}>STATUS</h3>
+                        <div className="score-circle-lg" style={{ '--progress': `${score}%` } as React.CSSProperties}>
+                            <div className="score-inner">
+                                {previewLoading ? (
+                                    <span className="score-val" style={{fontSize: '3rem', color: '#94a3b8'}}>...</span>
+                                ) : (
+                                    <span className="score-val">{score}%</span>
+                                )}
+                                <span className="score-lbl">{previewLoading ? 'CALCULANDO' : 'MATCH'}</span>
+                            </div>
+                        </div>
+                        <div className={`status-badge ${score > 70 ? 'ok' : 'nok'}`}>
+                            {selectedCardsIds.length < 2 ? 'FALTAN CARTAS' : (score > 70 ? 'COMPATIBLE' : 'INSUFICIENTE')}
+                        </div>
+                    </div>
 
-                    <div className="match-controls">
-                        <button className="match-ctrl-btn btn-save" onClick={handleSaveClick} title="Guardar">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
+                    <div className="match-actions">
+                        <button className="btn-match" onClick={handleSaveClick} disabled={loading || !isValidSelection || score <= 70}>
+                            {loading ? '...' : 'CONFIRMAR MATCH'}
                         </button>
-                        <button className="match-ctrl-btn btn-cancel" onClick={onCancel} title="Cancelar">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '24px', height: '24px' }}>
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
+                        <button className="btn-close" onClick={onCancel}>
+                            CANCELAR / ATRÁS
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Project Selection Modal */}
-            {showProjectModal && (
-                <div className="selection-modal-overlay">
-                    <div className="selection-modal">
-                        <h3>Seleccionar Proyecto</h3>
-                        <div className="selection-list">
-                            {projects.map(p => (
-                                <div key={p.idProyecto} className="selection-item" onClick={() => selectProject(p)}>
-                                    <div className="selection-name">{p.nombre}</div>
-                                    <div className="selection-desc">{p.descripcion}</div>
-                                </div>
-                            ))}
-                        </div>
-                        <button className="close-modal-btn" onClick={() => setShowProjectModal(false)}>Cerrar</button>
-                    </div>
-                </div>
-            )}
+            {/* MODALS */}
+            <ProjectPickerModal 
+                isOpen={showProjectModal}
+                projects={projects}
+                onClose={() => setShowProjectModal(false)}
+                onConfirm={handleProjectConfirm}
+            />
 
-            {/* Employee Selection Modal */}
-            {showEmployeeModal && (
-                <div className="selection-modal-overlay">
-                    <div className="selection-modal">
-                        <h3>Seleccionar Empleado</h3>
-                        <div className="selection-list">
-                            {employees.map(e => (
-                                <div key={e.idCarta} className="selection-item" onClick={() => selectEmployee(e)}>
-                                    <div className="selection-name">{e.nombreApellido}</div>
-                                    <div className="selection-desc">{e.tipoCarta}</div>
-                                </div>
-                            ))}
-                        </div>
-                        <button className="close-modal-btn" onClick={() => setShowEmployeeModal(false)}>Cerrar</button>
-                    </div>
-                </div>
-            )}
+            <EmployeeMultiPickerModal
+                isOpen={showEmployeeModal}
+                employees={employees}
+                currentTeamIds={selectedCardsIds}
+                onClose={() => setShowEmployeeModal(false)}
+                onConfirm={handleEmployeesConfirm}
+            />
         </div>
     );
 };

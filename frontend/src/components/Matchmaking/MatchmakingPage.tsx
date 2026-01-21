@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MatchGrid from './MatchGrid';
 import MatchForm from './MatchForm';
+import MatchmakingDetailsModal from './MatchmakingDetailsModal';
 import './Matchmaking.css';
 import matchmakingService from '../../services/matchmaking.service';
 import cartaService from '../../services/carta.service';
@@ -15,8 +16,7 @@ const MatchmakingPage: React.FC = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [technologies, setTechnologies] = useState<Technology[]>([]);
 
-    const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-    const [isEditing, setIsEditing] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const navigate = useNavigate();
@@ -38,53 +38,48 @@ const MatchmakingPage: React.FC = () => {
             setEmployees(empData);
             setProjects(projData);
             setTechnologies(techData);
-        } catch (err: any) {
+        } catch {
             setError('Error al cargar datos de matchmaking');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleSelect = (match: Match) => {
-        setSelectedMatch(match);
-        setIsEditing(true);
+    const handleDelete = async (id: number) => {
+        if (!window.confirm('¿Seguro que deseas eliminar este matchmaking? No borrará las cartas ni el proyecto.')) return;
+        try {
+            await matchmakingService.delete(id);
+            setMatches(prev => prev.filter(m => m.idMatchmaking !== id));
+        } catch {
+            alert('Error al eliminar matchmaking');
+        }
     };
 
     const handleAdd = () => {
-        setSelectedMatch(null);
-        setIsEditing(true);
+        setIsCreating(true);
     };
+
+    const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
 
     const handleBack = () => {
         navigate('/dashboard');
     };
 
-    const handleSave = async (data: Omit<Match, 'id'>) => {
-        try {
-            // data contains idProyecto, cartasIds, score
-            const created = await matchmakingService.create({
-                idProyecto: data.idProyecto,
-                cartasIds: data.cartasIds
-            });
-            // created should be the full Match object from backend
-            setMatches(prev => [...prev, created]);
-            setIsEditing(false);
-        } catch (e) {
-            alert("Error saving match");
-        }
+    const handleSave = () => {
+        setIsCreating(false);
+        loadData(); // Refresh list to show new match
     };
 
-    // The MatchForm implementation I see requires:
-    // onSave, onCancel
-    // It removed onUpdate, onDelete in my previous refactor? 
-    // Wait, let me check MatchFormProps again from Step 116.
-    // I removed the duplicate interface which had onUpdate, onDelete.
-    // The ACTIVE interface (first one) ONLY has onSave, onCancel.
-    // So I don't need to pass onUpdate, onDelete.
-
     const handleCancel = () => {
-        setIsEditing(false);
-        setSelectedMatch(null);
+        setIsCreating(false);
+    };
+
+    const handleMatchSelect = (id: number) => {
+        setSelectedMatchId(id);
+    };
+
+    const handleCloseDetails = () => {
+        setSelectedMatchId(null);
     };
 
     return (
@@ -94,21 +89,27 @@ const MatchmakingPage: React.FC = () => {
 
             <MatchGrid
                 matches={matches}
-                onSelect={handleSelect}
+                onDelete={handleDelete}
                 onAdd={handleAdd}
                 onBack={handleBack}
+                onSelect={handleMatchSelect}
             />
 
-            {isEditing && (
+            {isCreating && (
                 <MatchForm
-                    initialData={selectedMatch}
                     projects={projects}
-                    employees={employees} // Passed!
-                    technologies={technologies} // Passed!
+                    employees={employees}
+                    technologies={technologies}
                     onSave={handleSave}
                     onCancel={handleCancel}
                 />
             )}
+
+            <MatchmakingDetailsModal
+                isOpen={!!selectedMatchId}
+                matchId={selectedMatchId}
+                onClose={handleCloseDetails}
+            />
         </div>
     );
 };

@@ -7,7 +7,7 @@ export interface Technology {
 export interface NivelCarta {
   idTecnologia: number;
   nivelDominado: number;
-  // idCarta is implied or optional depending on context
+  tecnologia?: Technology;
 }
 
 export interface Employee {
@@ -24,6 +24,7 @@ export interface Employee {
 export interface NivelProyecto {
   idTecnologia: number;
   nivelRequerido: number;
+  tecnologia?: Technology;
 }
 
 export interface Project {
@@ -32,7 +33,7 @@ export interface Project {
   descripcion: string;
   fechaCreacion: string;
   fechaFinalizacion: string;
-  estado: 'P' | 'F' | 'E'; // P: En Proceso, F: Finalizado, E: En Espera
+  estado: 'P' | 'F' | 'E';
   nivelColaborativo: number;
   nivelOrganizativo: number;
   nivelVelocidadDesarrollo: number;
@@ -40,10 +41,9 @@ export interface Project {
 }
 
 export interface Match {
-  id: number; // This might be idMatchmaking from backend? Or just internal ID. Backend entity has idMatchmaking.
-  idMatchmaking?: number;
+  idMatchmaking: number;
   idProyecto: number;
-  cartasIds: number[];
-  score: number;
-  metadata?: any;
+  proyecto: Project;
+  resultadoPorcentaje: number;
+  cartas?: Employee[];
 }

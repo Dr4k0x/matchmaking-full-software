@@ -6,25 +6,23 @@ export interface CreateMatchmakingDto {
   cartasIds: number[];
 }
 
-export interface MatchmakingRandomDto {
-  idProyecto: number;
-  maxCards?: number;
-  attempts?: number;
-  threshold?: number;
-  seed?: string;
-}
+
 
 const matchmakingService = {
   create: async (dto: CreateMatchmakingDto) => {
     const response = await api.post('/matchmaking', dto);
     return response.data;
   },
-  createRandom: async (dto: MatchmakingRandomDto) => {
-    const response = await api.post('/matchmaking/random', dto);
+  preview: async (dto: CreateMatchmakingDto) => {
+    const response = await api.post<{ porcentaje: number }>('/matchmaking/preview', dto);
     return response.data;
   },
   findAll: async () => {
     const response = await api.get<Match[]>('/matchmaking');
+    return response.data;
+  },
+  findOne: async (id: number) => {
+    const response = await api.get<Match>(`/matchmaking/${id}`);
     return response.data;
   },
   delete: async (id: number) => {
