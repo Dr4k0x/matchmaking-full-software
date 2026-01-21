@@ -166,7 +166,7 @@ const TechnologiesPage: React.FC = () => {
                 
                 await loadTechnologies();
             } catch (err: any) {
-                const message = err.response?.data?.message || 'Error al eliminar tecnología';
+                const message = err.response?.data?.message || 'No se puede eliminar: esta tecnología está asociada a al menos un empleado o proyecto.';
                 setErrorModal({ title: 'BLOQUEADO', message });
                 setTechToDelete(null); // Dismiss confirmation modal on error
             }

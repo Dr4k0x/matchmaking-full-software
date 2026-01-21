@@ -5,11 +5,12 @@ import {
   Min,
   Max,
   IsEnum,
-  IsISO8601,
   IsArray,
   IsOptional,
   ValidateNested,
+  Matches,
 } from 'class-validator';
+
 import { CreateManyNivelProyectoDto } from 'src/nivel-proyecto/dto/create-many-nivel-proyecto.dto';
 import { CreateNivelProyectoDto } from 'src/nivel-proyecto/dto/create-nivel-proyecto.dto';
 import { PartialType, OmitType } from '@nestjs/mapped-types';
@@ -30,13 +31,16 @@ export class CreateProyectoDto extends PartialType(CreateManyNivelProyectoDto) {
   @IsNotEmpty()
   descripcion: string;
 
-  @IsISO8601()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha de creación debe tener el formato YYYY-MM-DD' })
   @IsNotEmpty()
   fechaCreacion: string;
 
-  @IsISO8601()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'La fecha de finalización debe tener el formato YYYY-MM-DD' })
   @IsNotEmpty()
   fechaFinalizacion: string;
+
 
   @IsString()
   @IsEnum(EstadoProyecto)

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
 import { type Project, type Technology, type NivelProyecto } from '../../types/index';
 import './Projects.css';
 
@@ -23,18 +24,28 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
     const [nivelVelocidadDesarrollo, setNivelVelocidadDesarrollo] = useState(1);
 
     const [nivelesProyecto, setNivelesProyecto] = useState<NivelProyecto[]>([]);
+    const [error, setError] = useState<string | null>(null);
+
+
+    const fechaCreacionRef = useRef<HTMLInputElement>(null);
+    const fechaFinalizacionRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (initialData) {
             setNombre(initialData.nombre);
             setDescripcion(initialData.descripcion);
             // Handle ISO dates for input[type="date"]
+            // Split by 'T' to get YYYY-MM-DD from ISO string without timezone shift
             if (initialData.fechaCreacion) {
-                setFechaCreacion(new Date(initialData.fechaCreacion).toISOString().split('T')[0]);
+                const dateStr = initialData.fechaCreacion;
+                setFechaCreacion(dateStr.split('T')[0]);
             }
             if (initialData.fechaFinalizacion) {
-                setFechaFinalizacion(new Date(initialData.fechaFinalizacion).toISOString().split('T')[0]);
+                const dateStr = initialData.fechaFinalizacion;
+                setFechaFinalizacion(dateStr.split('T')[0]);
             }
+
+
             const validEstado = (['P', 'F', 'E'].includes(initialData.estado) ? initialData.estado : 'P') as 'P' | 'F' | 'E';
             setEstado(validEstado);
             setNivelColaborativo(initialData.nivelColaborativo);
@@ -71,7 +82,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
         setNivelesProyecto(prev => prev.filter(np => np.idTecnologia !== idTecnologia));
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const payload = {
             nombre,
             descripcion,
@@ -91,8 +102,16 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
             console.log('ProjectForm Payload:', initialData ? 'UPDATE' : 'CREATE', payload);
         }
 
-        onSave(payload);
+        try {
+            await onSave(payload);
+        } catch (err: any) {
+            console.error('Error saving project:', err);
+            const backendMessage = err.response?.data?.message;
+            const message = Array.isArray(backendMessage) ? backendMessage[0] : backendMessage;
+            setError(message || 'Ocurrió un error al guardar el proyecto. Por favor, verifica los datos.');
+        }
     };
+
 
     const handleClose = () => {
         onCancel();
@@ -101,6 +120,26 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
     const getTechName = (id: number) => {
         return availableTechnologies.find(t => t.idTecnologia === id)?.nombre || `Tech ${id}`;
     };
+
+    const openCalendar = (ref: React.RefObject<HTMLInputElement | null>) => {
+        if (!ref.current) return;
+
+        
+        // Strategy: showPicker if available, fallback to focus + click
+        if (typeof ref.current.showPicker === 'function') {
+            try {
+                ref.current.showPicker();
+            } catch (error) {
+                console.warn('showPicker failed, falling back', error);
+                ref.current.focus();
+                ref.current.click();
+            }
+        } else {
+            ref.current.focus();
+            ref.current.click();
+        }
+    };
+
 
     return (
         <div className="tech-form-container" onClick={e => e.stopPropagation()}>
@@ -138,13 +177,56 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         <div className="proj-inputs-stack">
                             <div className="proj-input-group">
                                 <div className="proj-input-label">Fecha Inicio</div>
-                                <input type="date" className="proj-input" value={fechaCreacion} onChange={e => setFechaCreacion(e.target.value)} />
+                                <div className="proj-date-input-wrapper">
+                                    <input 
+                                        ref={fechaCreacionRef}
+                                        type="date" 
+                                        className="proj-input" 
+                                        value={fechaCreacion} 
+                                        onChange={e => setFechaCreacion(e.target.value)} 
+                                    />
+                                    <button 
+                                        type="button" 
+                                        className="proj-calendar-btn"
+                                        onClick={() => openCalendar(fechaCreacionRef)}
+                                        aria-label="Abrir calendario de fecha inicio"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                             <div className="proj-input-group">
                                 <div className="proj-input-label">Fecha Fin</div>
-                                <input type="date" className="proj-input" value={fechaFinalizacion} onChange={e => setFechaFinalizacion(e.target.value)} />
+                                <div className="proj-date-input-wrapper">
+                                    <input 
+                                        ref={fechaFinalizacionRef}
+                                        type="date" 
+                                        className="proj-input" 
+                                        value={fechaFinalizacion} 
+                                        onChange={e => setFechaFinalizacion(e.target.value)} 
+                                    />
+                                    <button 
+                                        type="button" 
+                                        className="proj-calendar-btn"
+                                        onClick={() => openCalendar(fechaFinalizacionRef)}
+                                        aria-label="Abrir calendario de fecha fin"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
+
                     </div>
 
                     <div className="proj-input-group">
@@ -242,8 +324,27 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                     </div>
                 </div>
             </div>
+
+            {/* Error Modal */}
+            {error && (
+                <div className="proj-error-overlay" onClick={() => setError(null)}>
+                    <div className="proj-error-card" onClick={e => e.stopPropagation()}>
+                        <div className="proj-error-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="8" x2="12" y2="12"></line>
+                                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            </svg>
+                        </div>
+                        <h3 className="proj-error-title">Fechas Inválidas</h3>
+                        <p className="proj-error-text">{error}</p>
+                        <button className="proj-error-btn" type="button" onClick={() => setError(null)}>ENTENDIDO</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
 
 export default ProjectForm;

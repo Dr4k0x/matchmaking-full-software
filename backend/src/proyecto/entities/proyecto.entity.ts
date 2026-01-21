@@ -26,10 +26,11 @@ export class Proyecto {
   descripcion: string;
 
   @Column({ type: 'date', name: 'fecha_creacion', nullable: true })
-  fechaCreacion: Date;
+  fechaCreacion: string;
 
   @Column({ type: 'date', name: 'fecha_finalizacion', nullable: true })
-  fechaFinalizacion: Date;
+  fechaFinalizacion: string;
+
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   estado: string;

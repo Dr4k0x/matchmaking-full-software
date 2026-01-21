@@ -208,9 +208,11 @@ const ProjectsPage: React.FC = () => {
             }
             handleCancel();
         } catch (err: any) {
-            alert('Error al guardar proyecto: ' + (err.response?.data?.message || err.message));
+            console.error('ProjectsPage handleSave error:', err);
+            throw err; // Propagate to let ProjectForm show the error modal
         }
     };
+
 
     const handleDelete = async () => {
         if (!selectedProject?.idProyecto) return;

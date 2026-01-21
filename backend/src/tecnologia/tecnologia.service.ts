@@ -12,6 +12,8 @@ import { UpdateTecnologiaDto } from './dto/update-tecnologia.dto';
 import { FindTecnologiaDto } from './dto/find-tecnologia.dto';
 import { Tecnologia } from './entities/tecnologia.entity';
 import { NivelCarta } from '../nivel-carta/entities/nivel-carta.entity';
+import { NivelProyecto } from '../nivel-proyecto/entities/nivel-proyecto.entity';
+
 import { JwtPayload } from 'src/auth/jwt-payload.interface';
 
 @Injectable()
@@ -21,7 +23,10 @@ export class TecnologiaService {
     private readonly tecnologiaRepository: Repository<Tecnologia>,
     @InjectRepository(NivelCarta)
     private readonly nivelCartaRepository: Repository<NivelCarta>,
+    @InjectRepository(NivelProyecto)
+    private readonly nivelProyectoRepository: Repository<NivelProyecto>,
   ) {}
+
 
   async create(createTecnologiaDto: CreateTecnologiaDto, user: JwtPayload) {
     try {
@@ -109,16 +114,24 @@ export class TecnologiaService {
   async remove(id: number, user: JwtPayload) {
     const tecnologia = await this.findOne(id, user);
 
-    // Check if technology is used by any card
-    const count = await this.nivelCartaRepository.count({
-      where: { idTecnologia: id },
-    });
+    // Check associations
+    const [countCarta, countProyecto] = await Promise.all([
+      this.nivelCartaRepository.count({ where: { idTecnologia: id } }),
+      this.nivelProyectoRepository.count({ where: { idTecnologia: id } }),
+    ]);
 
-    if (count > 0) {
-      throw new ConflictException(
-        'No se puede eliminar: esta tecnología la usa al menos un empleado.',
-      );
+    if (countCarta > 0 || countProyecto > 0) {
+      let message = 'No se puede eliminar: esta tecnología está asociada a ';
+      if (countCarta > 0 && countProyecto > 0) {
+        message += 'empleados y proyectos.';
+      } else if (countCarta > 0) {
+        message += 'al menos un empleado.';
+      } else {
+        message += 'al menos un proyecto.';
+      }
+      throw new ConflictException(message);
     }
+
 
     await this.tecnologiaRepository.remove(tecnologia);
     return { message: `Tecnologia con id ${id} eliminada correctamente` };

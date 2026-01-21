@@ -2,7 +2,9 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { CreateProyectoDto } from './dto/create-proyecto.dto';
@@ -28,6 +30,12 @@ export class ProyectoService {
     try {
       return await this.transactionService.runInTransaction(
         async (manager: EntityManager) => {
+          // Validate dates
+          if (createProyectoDto.fechaFinalizacion < createProyectoDto.fechaCreacion) {
+            throw new BadRequestException('La fecha de finalización no puede ser anterior a la fecha de inicio');
+          }
+
+
           // Validate technologies ownership if any
           if (createProyectoDto.nivelesProyecto && createProyectoDto.nivelesProyecto.length > 0) {
             const techIds = createProyectoDto.nivelesProyecto.map(n => n.idTecnologia);
@@ -212,13 +220,22 @@ export class ProyectoService {
 
         // 2. Separate logic: Base fields vs Levels
         const { nivelesProyecto, ...fieldsToUpdate } = updateProyectoDto;
+
+        // Ensure we work with strings and avoid new Date()
+        const fechaInicio = fieldsToUpdate.fechaCreacion || (typeof proyecto.fechaCreacion === 'object' && proyecto.fechaCreacion ? (proyecto.fechaCreacion as any).toISOString().split('T')[0] : proyecto.fechaCreacion);
+        const fechaFin = fieldsToUpdate.fechaFinalizacion || (typeof proyecto.fechaFinalizacion === 'object' && proyecto.fechaFinalizacion ? (proyecto.fechaFinalizacion as any).toISOString().split('T')[0] : proyecto.fechaFinalizacion);
+
+        if (fechaInicio && fechaFin && fechaInicio > fechaFin) {
+          throw new BadRequestException('La fecha de inicio no puede ser posterior a la fecha de fin');
+        }
         
         // Update base fields
         if (fieldsToUpdate.nombre) proyecto.nombre = fieldsToUpdate.nombre;
         if (fieldsToUpdate.descripcion !== undefined) proyecto.descripcion = fieldsToUpdate.descripcion;
-        if (fieldsToUpdate.fechaCreacion) proyecto.fechaCreacion = new Date(fieldsToUpdate.fechaCreacion);
-        if (fieldsToUpdate.fechaFinalizacion) proyecto.fechaFinalizacion = new Date(fieldsToUpdate.fechaFinalizacion);
+        if (fieldsToUpdate.fechaCreacion) proyecto.fechaCreacion = fieldsToUpdate.fechaCreacion;
+        if (fieldsToUpdate.fechaFinalizacion) proyecto.fechaFinalizacion = fieldsToUpdate.fechaFinalizacion;
         if (fieldsToUpdate.estado) proyecto.estado = fieldsToUpdate.estado as any;
+
         if (fieldsToUpdate.nivelColaborativo !== undefined) proyecto.nivelColaborativo = fieldsToUpdate.nivelColaborativo;
         if (fieldsToUpdate.nivelOrganizativo !== undefined) proyecto.nivelOrganizativo = fieldsToUpdate.nivelOrganizativo;
         if (fieldsToUpdate.nivelVelocidadDesarrollo !== undefined) proyecto.nivelVelocidadDesarrollo = fieldsToUpdate.nivelVelocidadDesarrollo;
