@@ -6,7 +6,7 @@ import ErrorModal from '../Modals/ErrorModal';
 
 interface ProjectFormProps {
     initialData?: Project | null;
-    onSave: (proj: Omit<Project, 'idProyecto'> | Partial<Omit<Project, 'idProyecto'>> & { nivelesProyecto?: Array<{ idTecnologia: number; nivelRequerido: number }> }) => void;
+    onSave: (proj: Omit<Project, 'idProyecto'>) => void;
     onCancel: () => void;
     onDelete: () => void;
     onManageTech: (currentData: Omit<Project, 'idProyecto'> & { idProyecto?: number }) => void;
@@ -35,46 +35,29 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
 
     const fechaCreacionRef = useRef<HTMLInputElement>(null);
     const fechaFinalizacionRef = useRef<HTMLInputElement>(null);
-    const initialValuesRef = useRef<{
-        nombre: string;
-        descripcion: string;
-        fechaCreacion: string;
-        fechaFinalizacion: string;
-        estado: 'P' | 'F' | 'E';
-        nivelColaborativo: number;
-        nivelOrganizativo: number;
-        nivelVelocidadDesarrollo: number;
-        nivelesProyecto: NivelProyecto[];
-    } | null>(null);
 
     useEffect(() => {
         if (initialData) {
-            const fechaCreacionStr = initialData.fechaCreacion ? initialData.fechaCreacion.split('T')[0] : '';
-            const fechaFinalizacionStr = initialData.fechaFinalizacion ? initialData.fechaFinalizacion.split('T')[0] : '';
-            const validEstado = (['P', 'F', 'E'].includes(initialData.estado) ? initialData.estado : 'P') as 'P' | 'F' | 'E';
-
             setNombre(initialData.nombre);
             setDescripcion(initialData.descripcion);
-            setFechaCreacion(fechaCreacionStr);
-            setFechaFinalizacion(fechaFinalizacionStr);
+            // Handle ISO dates for input[type="date"]
+            // Split by 'T' to get YYYY-MM-DD from ISO string without timezone shift
+            if (initialData.fechaCreacion) {
+                const dateStr = initialData.fechaCreacion;
+                setFechaCreacion(dateStr.split('T')[0]);
+            }
+            if (initialData.fechaFinalizacion) {
+                const dateStr = initialData.fechaFinalizacion;
+                setFechaFinalizacion(dateStr.split('T')[0]);
+            }
+
+
+            const validEstado = (['P', 'F', 'E'].includes(initialData.estado) ? initialData.estado : 'P') as 'P' | 'F' | 'E';
             setEstado(validEstado);
             setNivelColaborativo(initialData.nivelColaborativo);
             setNivelOrganizativo(initialData.nivelOrganizativo);
             setNivelVelocidadDesarrollo(initialData.nivelVelocidadDesarrollo);
             setNivelesProyecto(initialData.nivelesProyecto || []);
-
-            // Guardar valores iniciales para comparación
-            initialValuesRef.current = {
-                nombre: initialData.nombre,
-                descripcion: initialData.descripcion,
-                fechaCreacion: fechaCreacionStr,
-                fechaFinalizacion: fechaFinalizacionStr,
-                estado: validEstado,
-                nivelColaborativo: initialData.nivelColaborativo,
-                nivelOrganizativo: initialData.nivelOrganizativo,
-                nivelVelocidadDesarrollo: initialData.nivelVelocidadDesarrollo,
-                nivelesProyecto: initialData.nivelesProyecto || []
-            };
         } else {
             setNombre('');
             setDescripcion('');
@@ -85,7 +68,6 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
             setNivelOrganizativo(1);
             setNivelVelocidadDesarrollo(1);
             setNivelesProyecto([]);
-            initialValuesRef.current = null;
         }
     }, [initialData]);
 
@@ -108,20 +90,14 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
 
     const buildLockedPayload = () => ({ estado });
 
-    const arraysEqual = (a: NivelProyecto[], b: NivelProyecto[]): boolean => {
-        if (a.length !== b.length) return false;
-        const aSorted = [...a].sort((x, y) => x.idTecnologia - y.idTecnologia);
-        const bSorted = [...b].sort((x, y) => x.idTecnologia - y.idTecnologia);
-        return aSorted.every((item, index) =>
-            item.idTecnologia === bSorted[index].idTecnologia &&
-            item.nivelRequerido === bSorted[index].nivelRequerido
-        );
-    };
+    const handleSubmit = async () => {
+        if (isSubmitting) return;
 
-    const getChangedFields = () => {
-        if (!initialValuesRef.current) {
-            // Si no hay valores iniciales, es creación, enviar todo
-            return {
+        let payload: any;
+        if (isLocked) {
+            payload = buildLockedPayload();
+        } else {
+            payload = {
                 nombre,
                 descripcion,
                 fechaCreacion: fechaCreacion || undefined,
@@ -137,50 +113,6 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
             };
         }
 
-        const initial = initialValuesRef.current;
-        const payload: Partial<Omit<Project, 'idProyecto'>> & { nivelesProyecto?: Array<{ idTecnologia: number; nivelRequerido: number }> } = {};
-
-        if (nombre !== initial.nombre) payload.nombre = nombre;
-        if (descripcion !== initial.descripcion) payload.descripcion = descripcion;
-        if (fechaCreacion !== initial.fechaCreacion) {
-            payload.fechaCreacion = fechaCreacion || undefined;
-        }
-        if (fechaFinalizacion !== initial.fechaFinalizacion) {
-            payload.fechaFinalizacion = fechaFinalizacion || undefined;
-        }
-        if (estado !== initial.estado) payload.estado = estado;
-        if (nivelColaborativo !== initial.nivelColaborativo) payload.nivelColaborativo = nivelColaborativo;
-        if (nivelOrganizativo !== initial.nivelOrganizativo) payload.nivelOrganizativo = nivelOrganizativo;
-        if (nivelVelocidadDesarrollo !== initial.nivelVelocidadDesarrollo) {
-            payload.nivelVelocidadDesarrollo = nivelVelocidadDesarrollo;
-        }
-
-        const currentNiveles = nivelesProyecto.map(np => ({
-            idTecnologia: np.idTecnologia,
-            nivelRequerido: np.nivelRequerido
-        }));
-        const initialNiveles = initial.nivelesProyecto.map(np => ({
-            idTecnologia: np.idTecnologia,
-            nivelRequerido: np.nivelRequerido
-        }));
-
-        if (!arraysEqual(currentNiveles, initialNiveles)) {
-            payload.nivelesProyecto = currentNiveles;
-        }
-
-        return payload;
-    };
-
-    const handleSubmit = async () => {
-        if (isSubmitting) return;
-
-        let payload: Partial<Omit<Project, 'idProyecto'>> & { nivelesProyecto?: Array<{ idTecnologia: number; nivelRequerido: number }> };
-        if (isLocked) {
-            payload = buildLockedPayload();
-        } else {
-            payload = getChangedFields();
-        }
-
         if (import.meta.env.DEV) {
             console.log('ProjectForm Payload:', initialData ? 'UPDATE' : 'CREATE', payload);
         }
@@ -188,11 +120,11 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
         setIsSubmitting(true);
         try {
             await onSave(payload);
-        } catch (err: unknown) {
+        } catch (err: any) {
             console.error('Error saving project:', err);
-            const backendMessage = (err as { response?: { data?: { message?: string }; status?: number } })?.response?.data?.message;
+            const backendMessage = err.response?.data?.message;
             const message = backendMessage || 'Ocurrió un error al guardar el proyecto.';
-            const title = (err as { response?: { status?: number } })?.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
+            const title = err.response?.status === 409 ? 'ACCIÓN NO PERMITIDA' : 'ERROR AL GUARDAR';
 
             if (onError) {
                 // If parent handles errors, let it show the modal
@@ -219,7 +151,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
     const openCalendar = (ref: React.RefObject<HTMLInputElement | null>) => {
         if (!ref.current) return;
 
-
+        
         // Strategy: showPicker if available, fallback to focus + click
         if (typeof ref.current.showPicker === 'function') {
             try {
@@ -282,16 +214,16 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                             <div className="proj-input-group">
                                 <div className="proj-input-label">Fecha Inicio</div>
                                 <div className="proj-date-input-wrapper">
-                                    <input
+                                    <input 
                                         ref={fechaCreacionRef}
-                                        type="date"
-                                        className="proj-input"
-                                        value={fechaCreacion}
-                                        onChange={e => setFechaCreacion(e.target.value)}
+                                        type="date" 
+                                        className="proj-input" 
+                                        value={fechaCreacion} 
+                                        onChange={e => setFechaCreacion(e.target.value)} 
                                         disabled={isLocked}
                                     />
-                                    <button
-                                        type="button"
+                                    <button 
+                                        type="button" 
                                         className="proj-calendar-btn"
                                         onClick={() => openCalendar(fechaCreacionRef)}
                                         aria-label="Abrir calendario de fecha inicio"
@@ -309,16 +241,16 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                             <div className="proj-input-group">
                                 <div className="proj-input-label">Fecha Fin</div>
                                 <div className="proj-date-input-wrapper">
-                                    <input
+                                    <input 
                                         ref={fechaFinalizacionRef}
-                                        type="date"
-                                        className="proj-input"
-                                        value={fechaFinalizacion}
-                                        onChange={e => setFechaFinalizacion(e.target.value)}
+                                        type="date" 
+                                        className="proj-input" 
+                                        value={fechaFinalizacion} 
+                                        onChange={e => setFechaFinalizacion(e.target.value)} 
                                         disabled={isLocked}
                                     />
-                                    <button
-                                        type="button"
+                                    <button 
+                                        type="button" 
                                         className="proj-calendar-btn"
                                         onClick={() => openCalendar(fechaFinalizacionRef)}
                                         aria-label="Abrir calendario de fecha fin"
@@ -339,7 +271,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
 
                     <div className="proj-input-group">
                         <div className="proj-input-label">Estado</div>
-                        <select className="proj-input" value={estado} onChange={e => setEstado(e.target.value as 'P' | 'F' | 'E')}>
+                        <select className="proj-input" value={estado} onChange={e => setEstado(e.target.value as any)}>
                             <option value="P">🟠 En Proceso</option>
                             <option value="F">🟢 Finalizado</option>
                             <option value="E">⚪ En Espera</option>
@@ -363,7 +295,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         <div className="proj-stepper-label">COLABORACIÓN</div>
                         <div className="proj-stepper-controls">
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, -1)} type="button" disabled={isLocked || nivelColaborativo <= 1}>-</button>
-                            <span style={{ fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center' }}>Lv {nivelColaborativo}</span>
+                            <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelColaborativo}</span>
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelColaborativo, 1)} type="button" disabled={isLocked || nivelColaborativo >= 10}>+</button>
                         </div>
                     </div>
@@ -372,7 +304,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         <div className="proj-stepper-label">ORGANIZACIÓN</div>
                         <div className="proj-stepper-controls">
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, -1)} type="button" disabled={isLocked || nivelOrganizativo <= 1}>-</button>
-                            <span style={{ fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center' }}>Lv {nivelOrganizativo}</span>
+                            <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelOrganizativo}</span>
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelOrganizativo, 1)} type="button" disabled={isLocked || nivelOrganizativo >= 10}>+</button>
                         </div>
                     </div>
@@ -381,7 +313,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         <div className="proj-stepper-label">VELOCIDAD DEV</div>
                         <div className="proj-stepper-controls">
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, -1)} type="button" disabled={isLocked || nivelVelocidadDesarrollo <= 1}>-</button>
-                            <span style={{ fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center' }}>Lv {nivelVelocidadDesarrollo}</span>
+                            <span style={{fontWeight: 900, color: '#3498db', minWidth: '40px', textAlign: 'center'}}>Lv {nivelVelocidadDesarrollo}</span>
                             <button className="proj-stepper-btn" onClick={() => handleStatChange(setNivelVelocidadDesarrollo, 1)} type="button" disabled={isLocked || nivelVelocidadDesarrollo >= 10}>+</button>
                         </div>
                     </div>
@@ -390,7 +322,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                 {/* Col 3: Stack Tecnológico (Estilo Employees) */}
                 <div className="proj-col">
                     <div className="proj-skills-header-row">
-                        <div className="proj-col-title" style={{ margin: 0 }}>Stack Tecnológico</div>
+                        <div className="proj-col-title" style={{margin: 0}}>Stack Tecnológico</div>
                         <button className="proj-add-skill-btn-mini" onClick={() => onManageTech({
                             nombre,
                             descripcion,
@@ -409,10 +341,10 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
                         {nivelesProyecto.map(np => (
                             <div key={np.idTecnologia} className="proj-tech-item-row">
                                 <div className="proj-tech-item-name">{getTechName(np.idTecnologia)}</div>
-
+                                
                                 <div className="proj-stepper-controls-mini">
                                     <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, -1)} type="button" disabled={isLocked || np.nivelRequerido <= 1}>-</button>
-                                    <span style={{ fontWeight: 800, fontSize: '0.9rem', minWidth: '20px', textAlign: 'center' }}>{np.nivelRequerido}</span>
+                                    <span style={{fontWeight: 800, fontSize: '0.9rem', minWidth: '20px', textAlign: 'center'}}>{np.nivelRequerido}</span>
                                     <button className="proj-stepper-btn-small" onClick={() => handleLevelChange(np.idTecnologia, 1)} type="button" disabled={isLocked || np.nivelRequerido >= 10}>+</button>
                                 </div>
 
@@ -435,7 +367,7 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ initialData, onSave, onCancel
             </div>
 
             {/* Error Modal */}
-            <ErrorModal
+            <ErrorModal 
                 isOpen={!!error}
                 title={errorTitle}
                 message={error || ''}
